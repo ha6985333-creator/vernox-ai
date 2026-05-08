@@ -3,74 +3,69 @@
 
   const API_URL = "/api/chat";
 
-  const chatBubble  = document.getElementById("chatBubble");
-  const chatWindow  = document.getElementById("chatWindow");
+  const chatWindow   = document.getElementById("chatWindow");
   const chatMessages = document.getElementById("chatMessages");
-  const userInput   = document.getElementById("userInput");
-  const sendBtn     = document.getElementById("sendBtn");
-  const iconChat    = chatBubble.querySelector(".icon-chat");
-  const iconClose   = chatBubble.querySelector(".icon-close");
+  const userInput    = document.getElementById("userInput");
+  const sendBtn      = document.getElementById("sendBtn");
+  const closeBtn     = document.getElementById("closeBtn");
+  const chatBubble   = document.getElementById("chatBubble");
 
-  let isOpen    = false;
   let isLoading = false;
-  let messages  = [];       // full conversation history sent to the API
-  let typingEl  = null;     // reference to the live typing indicator element
+  let messages  = [];
+  let typingEl  = null;
 
-  // ── Toggle chat open / close ──────────────────────────────────────────
-  function toggleChat() {
-    isOpen = !isOpen;
-    chatWindow.classList.toggle("hidden", !isOpen);
-    iconChat.classList.toggle("hidden", isOpen);
-    iconClose.classList.toggle("hidden", !isOpen);
-
-    if (isOpen) {
-      if (messages.length === 0) sendWelcome();
-      setTimeout(() => userInput.focus(), 120);
-    }
+  // ── Open / close ──────────────────────────────────────────────
+  function openChat() {
+    chatWindow.classList.remove("hidden");
+    chatBubble.style.display = "none";
+    if (messages.length === 0) sendWelcome();
+    else setTimeout(() => userInput.focus(), 120);
   }
 
-  // ── Render a message bubble ───────────────────────────────────────────
+  function closeChat() {
+    chatWindow.classList.add("hidden");
+    chatBubble.style.display = "flex";
+  }
+
+  // ── Render a bubble ───────────────────────────────────────────
   function appendMessage(role, text) {
-    const wrap = document.createElement("div");
+    const wrap   = document.createElement("div");
     wrap.className = `message ${role}`;
 
     const bubble = document.createElement("div");
     bubble.className = "message-bubble";
     bubble.textContent = text;
 
-    const time = document.createElement("span");
+    const time   = document.createElement("span");
     time.className = "message-time";
-    time.textContent = formatTime(new Date());
+    time.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
     wrap.appendChild(bubble);
     wrap.appendChild(time);
     chatMessages.appendChild(wrap);
-    scrollToBottom();
+    chatMessages.scrollTop = chatMessages.scrollHeight;
     return wrap;
   }
 
-  // ── Typing indicator ─────────────────────────────────────────────────
+  // ── Typing indicator ──────────────────────────────────────────
   function showTyping() {
     const wrap = document.createElement("div");
     wrap.className = "message ai";
-    const indicator = document.createElement("div");
-    indicator.className = "typing-indicator";
+    const ind  = document.createElement("div");
+    ind.className = "typing-indicator";
     for (let i = 0; i < 3; i++) {
       const dot = document.createElement("span");
       dot.className = "typing-dot";
-      indicator.appendChild(dot);
+      ind.appendChild(dot);
     }
-    wrap.appendChild(indicator);
+    wrap.appendChild(ind);
     chatMessages.appendChild(wrap);
-    scrollToBottom();
+    chatMessages.scrollTop = chatMessages.scrollHeight;
     typingEl = wrap;
   }
+  function hideTyping() { if (typingEl) { typingEl.remove(); typingEl = null; } }
 
-  function hideTyping() {
-    if (typingEl) { typingEl.remove(); typingEl = null; }
-  }
-
-  // ── Send user message ─────────────────────────────────────────────────
+  // ── Send message ──────────────────────────────────────────────
   async function sendMessage() {
     if (isLoading) return;
     const text = userInput.value.trim();
@@ -78,7 +73,6 @@
 
     userInput.value = "";
     autoResize();
-
     messages.push({ role: "user", content: text });
     appendMessage("user", text);
 
@@ -87,25 +81,23 @@
     showTyping();
 
     try {
-      const res = await fetch(API_URL, {
+      const res  = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages }),
       });
-
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${res.status}`);
       }
-
-      const data = await res.json();
+      const data  = await res.json();
       const reply = data.message || "";
       messages.push({ role: "assistant", content: reply });
       hideTyping();
       appendMessage("ai", reply);
     } catch (err) {
       hideTyping();
-      appendMessage("ai", "Sorry, something went wrong. Please try again in a moment.");
+      appendMessage("ai", "Sorry, something went wrong. Please try again.");
       console.error("Chat error:", err);
       messages.pop();
     } finally {
@@ -115,22 +107,22 @@
     }
   }
 
-  // ── Welcome message ───────────────────────────────────────────────────
+  // ── Welcome message (auto-sent on open) ───────────────────────
   async function sendWelcome() {
     isLoading = true;
     sendBtn.disabled = true;
     showTyping();
 
     try {
-      const res = await fetch(API_URL, {
+      const res  = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: [{ role: "user", content: "Hello" }] }),
       });
-      const data = await res.json();
+      const data  = await res.json();
       const reply = data.message || "Hi there! How can I help you today?";
       messages = [
-        { role: "user", content: "Hello" },
+        { role: "user",      content: "Hello" },
         { role: "assistant", content: reply },
       ];
       hideTyping();
@@ -143,34 +135,25 @@
     } finally {
       isLoading = false;
       sendBtn.disabled = false;
+      setTimeout(() => userInput.focus(), 80);
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────
-  function scrollToBottom() {
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-  }
-
-  function formatTime(date) {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
-
+  // ── Auto-resize textarea ──────────────────────────────────────
   function autoResize() {
     userInput.style.height = "auto";
     userInput.style.height = Math.min(userInput.scrollHeight, 120) + "px";
   }
 
-  // ── Event listeners ───────────────────────────────────────────────────
-  chatBubble.addEventListener("click", toggleChat);
-
+  // ── Events ────────────────────────────────────────────────────
+  closeBtn.addEventListener("click", closeChat);
+  chatBubble.addEventListener("click", openChat);
   sendBtn.addEventListener("click", sendMessage);
-
   userInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   });
-
   userInput.addEventListener("input", autoResize);
+
+  // Open automatically on page load
+  openChat();
 })();
