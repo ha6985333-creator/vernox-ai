@@ -63,7 +63,8 @@ export async function sendCredentialsEmail(input: CredentialsEmailInput): Promis
   const resend = getResend();
   if (!resend) { logger.warn("RESEND_API_KEY not set — skipping credentials email"); return; }
 
-  const to = notifyTarget(input.email);
+  // Credentials always go to the actual customer, never redirected to NOTIFY_EMAIL
+  const to = input.email;
   const loginUrl = `https://${process.env["REPLIT_DOMAINS"]}/login`;
 
   const { error } = await resend.emails.send({

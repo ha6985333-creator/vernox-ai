@@ -39,7 +39,7 @@ router.post("/admin/tenants", async (req, res) => {
 
   try {
     const result = await createTenantWithCredentials({ name, email, plan });
-    res.status(201).json({ tenant: result.tenant });
+    res.status(201).json({ tenant: result.tenant, tempPassword: result.tempPassword });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to create tenant";
     res.status(400).json({ error: message });
