@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --accent: #4f46e5; --accent-dark: #3730a3; --accent-light: #ede9fe;
+      --text: #111827; --muted: #6b7280; --border: #e5e7eb;
+      --bg: #f9fafb; --sidebar: #1e1b4b;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 240px; flex-shrink: 0; background: var(--sidebar); color: #fff;
+      display: flex; flex-direction: column; min-height: 100vh; padding: 24px 16px;
+    }
+    .sidebar-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 36px; padding: 0 8px; }
+    .sidebar-logo-icon { width: 36px; height: 36px; border-radius: 8px; background: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .sidebar-logo-icon svg { width: 20px; height: 20px; }
+    .sidebar-logo-text { font-weight: 700; font-size: 1rem; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
+      color: rgba(255,255,255,0.7); cursor: pointer; transition: background 0.15s, color 0.15s;
+      font-size: 0.9rem; margin-bottom: 2px; text-decoration: none;
+    }
+    .nav-item:hover, .nav-item.active { background: rgba(255,255,255,0.1); color: #fff; }
+    .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+    .sidebar-footer { margin-top: auto; }
+    .logout-btn {
+      width: 100%; background: transparent; border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.7); padding: 9px 12px; border-radius: 8px;
+      cursor: pointer; font-size: 0.85rem; transition: all 0.15s; font-family: inherit;
+    }
+    .logout-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+    /* ── Main ── */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .topbar {
+      background: #fff; border-bottom: 1px solid var(--border);
+      padding: 16px 28px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .topbar-title { font-size: 1.1rem; font-weight: 700; }
+    .topbar-user { font-size: 0.85rem; color: var(--muted); }
+    .content { flex: 1; padding: 28px; overflow-y: auto; }
+
+    /* ── Stats ── */
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .stat-card {
+      background: #fff; border: 1px solid var(--border); border-radius: 12px;
+      padding: 20px 22px; display: flex; flex-direction: column; gap: 6px;
+    }
+    .stat-label { font-size: 0.78rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-value { font-size: 2rem; font-weight: 800; color: var(--text); }
+    .stat-sub { font-size: 0.78rem; color: var(--muted); }
+
+    /* ── Section header ── */
+    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .section-title { font-size: 1rem; font-weight: 700; }
+    .btn {
+      padding: 9px 18px; background: var(--accent); color: #fff; border: none;
+      border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+      transition: background 0.15s; font-family: inherit;
+    }
+    .btn:hover { background: var(--accent-dark); }
+    .btn-sm { padding: 5px 12px; font-size: 0.78rem; border-radius: 6px; }
+    .btn-danger { background: #dc2626; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+    .btn-ghost:hover { background: var(--accent-light); }
+
+    /* ── Table ── */
+    .table-wrap { background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th { padding: 12px 16px; text-align: left; font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; background: var(--bg); border-bottom: 1px solid var(--border); }
+    td { padding: 14px 16px; font-size: 0.875rem; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafafa; }
+    .empty { padding: 48px; text-align: center; color: var(--muted); font-size: 0.9rem; }
+
+    /* ── Badges ── */
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; text-transform: capitalize; }
+    .badge-active { background: #d1fae5; color: #065f46; }
+    .badge-suspended { background: #fef3c7; color: #92400e; }
+    .badge-cancelled { background: #fee2e2; color: #991b1b; }
+    .badge-plan { background: var(--accent-light); color: var(--accent-dark); }
+
+    /* ── Modal ── */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+    .modal-overlay.hidden { display: none; }
+    .modal { background: #fff; border-radius: 16px; padding: 32px; width: 100%; max-width: 440px; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+    .modal h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 20px; }
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px; }
+    .field input, .field select {
+      width: 100%; padding: 10px 13px; border: 1.5px solid var(--border);
+      border-radius: 8px; font-size: 0.9rem; font-family: inherit; outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .field input:focus, .field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+    .error-toast { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 14px; font-size: 0.83rem; margin-bottom: 14px; display: none; }
+  </style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      </div>
+      <span class="sidebar-logo-text">Admin Panel</span>
+    </div>
+    <nav>
+      <a class="nav-item active" href="/admin">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+        Customers
+      </a>
+      <a class="nav-item" href="/">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Chat Widget
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <p style="font-size:0.72rem;color:rgba(255,255,255,0.4);padding:0 8px;margin-bottom:12px;" id="adminEmail"></p>
+      <button class="logout-btn" id="logoutBtn">Sign Out</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <span class="topbar-title">Customer Dashboard</span>
+      <span class="topbar-user" id="topbarUser"></span>
+    </div>
+    <div class="content">
+      <div class="stats" id="statsRow">
+        <div class="stat-card"><div class="stat-label">Total Customers</div><div class="stat-value" id="statTotal">—</div></div>
+        <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value" id="statActive">—</div></div>
+        <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="statUsers">—</div></div>
+      </div>
+
+      <div class="section-header">
+        <span class="section-title">All Customers</span>
+        <button class="btn btn-sm" id="addBtn">+ Add Customer</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th><th>Email</th><th>Plan</th><th>Status</th><th>Joined</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="tenantsBody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add customer modal -->
+  <div class="modal-overlay hidden" id="addModal">
+    <div class="modal">
+      <h2>Add New Customer</h2>
+      <div class="error-toast" id="modalError"></div>
+      <div class="field"><label>Full Name</label><input type="text" id="newName" placeholder="Jane Doe" /></div>
+      <div class="field"><label>Email Address</label><input type="email" id="newEmail" placeholder="jane@example.com" /></div>
+      <div class="field">
+        <label>Plan</label>
+        <select id="newPlan">
+          <option value="starter">Starter</option>
+          <option value="pro">Pro</option>
+          <option value="enterprise">Enterprise</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="cancelBtn">Cancel</button>
+        <button class="btn" id="saveBtn">Create & Send Credentials</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = "/api";
+    let currentUser = null;
+
+    async function apiFetch(path, opts = {}) {
+      const res = await fetch(API + path, { credentials: "include", ...opts, headers: { "Content-Type": "application/json", ...(opts.headers || {}) } });
+      if (res.status === 401 || res.status === 403) { window.location.href = "/login"; return null; }
+      return res.json();
+    }
+
+    async function init() {
+      const me = await apiFetch("/auth/me");
+      if (!me || me.role !== "admin") { window.location.href = "/login"; return; }
+      currentUser = me;
+      document.getElementById("adminEmail").textContent = me.email;
+      document.getElementById("topbarUser").textContent = me.email;
+      loadStats();
+      loadTenants();
+    }
+
+    async function loadStats() {
+      const s = await apiFetch("/admin/stats");
+      if (!s) return;
+      document.getElementById("statTotal").textContent = s.totalTenants;
+      document.getElementById("statActive").textContent = s.activeTenants;
+      document.getElementById("statUsers").textContent = s.totalUsers;
+    }
+
+    async function loadTenants() {
+      const tenants = await apiFetch("/admin/tenants");
+      const body = document.getElementById("tenantsBody");
+      if (!tenants || tenants.length === 0) {
+        body.innerHTML = '<tr><td colspan="6" class="empty">No customers yet. Add one above.</td></tr>';
+        return;
+      }
+      body.innerHTML = tenants.map(t => `
+        <tr>
+          <td><strong>${esc(t.name)}</strong></td>
+          <td>${esc(t.email)}</td>
+          <td><span class="badge badge-plan">${esc(t.plan)}</span></td>
+          <td><span class="badge badge-${t.status}">${esc(t.status)}</span></td>
+          <td>${new Date(t.createdAt).toLocaleDateString()}</td>
+          <td>
+            ${t.status === "active"
+              ? `<button class="btn btn-sm btn-danger" onclick="setStatus('${t.id}','suspended')">Suspend</button>`
+              : `<button class="btn btn-sm" onclick="setStatus('${t.id}','active')">Activate</button>`}
+          </td>
+        </tr>`).join("");
+    }
+
+    async function setStatus(id, status) {
+      await apiFetch(`/admin/tenants/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+      loadTenants(); loadStats();
+    }
+
+    function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+    document.getElementById("addBtn").addEventListener("click", () => document.getElementById("addModal").classList.remove("hidden"));
+    document.getElementById("cancelBtn").addEventListener("click", () => document.getElementById("addModal").classList.add("hidden"));
+
+    document.getElementById("saveBtn").addEventListener("click", async () => {
+      const name = document.getElementById("newName").value.trim();
+      const email = document.getElementById("newEmail").value.trim();
+      const plan = document.getElementById("newPlan").value;
+      const errEl = document.getElementById("modalError");
+      errEl.style.display = "none";
+      if (!name || !email) { errEl.textContent = "Name and email are required."; errEl.style.display = "block"; return; }
+      const btn = document.getElementById("saveBtn");
+      btn.disabled = true; btn.textContent = "Creating…";
+      const res = await apiFetch("/admin/tenants", { method: "POST", body: JSON.stringify({ name, email, plan }) });
+      btn.disabled = false; btn.textContent = "Create & Send Credentials";
+      if (res?.error) { errEl.textContent = res.error; errEl.style.display = "block"; return; }
+      document.getElementById("addModal").classList.add("hidden");
+      document.getElementById("newName").value = "";
+      document.getElementById("newEmail").value = "";
+      loadTenants(); loadStats();
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", async () => {
+      await apiFetch("/auth/logout", { method: "POST" });
+      window.location.href = "/login";
+    });
+
+    init();
+  </script>
+</body>
+</html>
