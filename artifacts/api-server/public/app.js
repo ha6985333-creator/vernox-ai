@@ -95,6 +95,7 @@
       messages.push({ role: "assistant", content: reply });
       hideTyping();
       appendMessage("ai", reply);
+      if (data.bookingConfirmed) showBookingBanner();
     } catch (err) {
       hideTyping();
       appendMessage("ai", "Sorry, something went wrong. Please try again.");
@@ -137,6 +138,26 @@
       sendBtn.disabled = false;
       setTimeout(() => userInput.focus(), 80);
     }
+  }
+
+  // ── Booking confirmation banner ───────────────────────────────
+  function showBookingBanner() {
+    if (document.getElementById("bookingBanner")) return;
+    const banner = document.createElement("div");
+    banner.id = "bookingBanner";
+    banner.innerHTML = `
+      <span style="font-size:1.2rem;">✓</span>
+      <span>Booking confirmed! A confirmation email is on its way.</span>
+    `;
+    Object.assign(banner.style, {
+      display: "flex", alignItems: "center", gap: "10px",
+      margin: "8px 14px", padding: "10px 14px",
+      background: "#d1fae5", color: "#065f46",
+      borderRadius: "10px", fontSize: "0.85rem", fontWeight: "600",
+      animation: "msgIn 0.25s ease both",
+    });
+    chatMessages.appendChild(banner);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
   // ── Auto-resize textarea ──────────────────────────────────────

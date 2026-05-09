@@ -1,12 +1,30 @@
 import { Router, type IRouter } from "express";
 import Groq from "groq-sdk";
 import { SYSTEM_PROMPT } from "../config.js";
+import { sendConfirmationEmail, type BookingDetails } from "../lib/email.js";
 
 const router: IRouter = Router();
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+}
+
+const BOOKING_MARKER = "BOOKING_COMPLETE::";
+
+function extractBooking(reply: string): { clean: string; booking: BookingDetails | null } {
+  const markerIndex = reply.indexOf(BOOKING_MARKER);
+  if (markerIndex === -1) return { clean: reply, booking: null };
+
+  const clean = reply.slice(0, markerIndex).trim();
+  const jsonStr = reply.slice(markerIndex + BOOKING_MARKER.length).trim();
+
+  try {
+    const booking = JSON.parse(jsonStr) as BookingDetails;
+    return { clean, booking };
+  } catch {
+    return { clean, booking: null };
+  }
 }
 
 router.post("/chat", async (req, res) => {
@@ -32,12 +50,18 @@ router.post("/chat", async (req, res) => {
         { role: "system", content: SYSTEM_PROMPT },
         ...messages,
       ],
-      max_tokens: 512,
+      max_tokens: 600,
       temperature: 0.7,
     });
 
-    const reply = completion.choices[0]?.message?.content ?? "";
-    res.json({ message: reply });
+    const rawReply = completion.choices[0]?.message?.content ?? "";
+    const { clean, booking } = extractBooking(rawReply);
+
+    if (booking?.email) {
+      sendConfirmationEmail(booking).catch(() => {});
+    }
+
+    res.json({ message: clean, bookingConfirmed: !!booking });
   } catch (err) {
     req.log.error({ err }, "Groq API error");
     res.status(502).json({ error: "Failed to reach AI service." });
