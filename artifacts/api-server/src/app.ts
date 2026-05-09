@@ -36,6 +36,14 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
-app.use(express.static(join(__dirname, "../public")));
+app.use(
+  express.static(join(__dirname, "../public"), {
+    setHeaders(res) {
+      if (process.env["NODE_ENV"] !== "production") {
+        res.setHeader("Cache-Control", "no-store");
+      }
+    },
+  }),
+);
 
 export default app;
