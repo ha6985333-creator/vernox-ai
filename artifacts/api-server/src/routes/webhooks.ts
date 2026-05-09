@@ -1,62 +1,77 @@
 import { Router, type IRouter } from "express";
-import Stripe from "stripe";
+import crypto from "crypto";
 import { createTenantWithCredentials } from "../lib/accounts.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
 
-router.post("/webhooks/stripe", async (req, res) => {
-  const stripeSecret = process.env["STRIPE_SECRET_KEY"];
-  const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"];
+/**
+ * Payoneer Checkout IPN (Instant Payment Notification)
+ *
+ * Payoneer POSTs form-encoded fields to this endpoint when a payment completes.
+ * Fields: uid, type, ref, amount, currency, status, sign, p_email, p_firstname, p_lastname
+ * status=2 means payment completed/approved.
+ * Signature: MD5(`uid:type:ref:amount:currency:status:PAYONEER_SECRET`)
+ * Must respond with plain-text "OK" to acknowledge.
+ *
+ * Set up your IPN URL in Payoneer dashboard:
+ *   https://<your-domain>/api/webhooks/payoneer
+ */
+router.post("/webhooks/payoneer", async (req, res) => {
+  const secret = process.env["PAYONEER_SECRET"];
 
-  if (!stripeSecret) {
-    res.status(500).json({ error: "Stripe not configured" });
-    return;
-  }
+  const body = req.body as Record<string, string>;
+  const { uid, type, ref, amount, currency, status, sign, p_email, p_firstname, p_lastname } = body;
 
-  const stripe = new Stripe(stripeSecret);
-  let event: Stripe.Event;
+  logger.info({ uid, type, ref, amount, status, p_email }, "Payoneer IPN received");
 
-  try {
-    if (webhookSecret) {
-      const sig = req.headers["stripe-signature"] as string;
-      event = stripe.webhooks.constructEvent(req.body as Buffer, sig, webhookSecret);
-    } else {
-      event = req.body as Stripe.Event;
-    }
-  } catch (err) {
-    logger.error({ err }, "Stripe webhook signature verification failed");
-    res.status(400).json({ error: "Invalid signature" });
-    return;
-  }
+  // Verify signature if secret is configured
+  if (secret) {
+    const expected = crypto
+      .createHash("md5")
+      .update(`${uid}:${type}:${ref}:${amount}:${currency}:${status}:${secret}`)
+      .digest("hex")
+      .toLowerCase();
+    const received = (sign ?? "").toLowerCase();
 
-  if (event.type === "customer.subscription.created") {
-    const subscription = event.data.object as Stripe.Subscription;
-    const customerId = subscription.customer as string;
-
-    try {
-      const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
-      const name = customer.name || "New Customer";
-      const email = customer.email!;
-      const plan = (subscription.items.data[0]?.price.nickname ?? "starter").toLowerCase();
-
-      await createTenantWithCredentials({
-        name,
-        email,
-        plan,
-        stripeCustomerId: customerId,
-        stripeSubscriptionId: subscription.id,
-      });
-
-      logger.info({ customerId, email }, "Tenant provisioned from Stripe subscription");
-    } catch (err) {
-      logger.error({ err, customerId }, "Failed to provision tenant from Stripe webhook");
-      res.status(500).json({ error: "Provisioning failed" });
+    if (expected !== received) {
+      logger.warn({ received, expected }, "Payoneer IPN signature mismatch");
+      res.status(400).send("INVALID_SIGNATURE");
       return;
     }
+  } else {
+    logger.warn("PAYONEER_SECRET not set — skipping signature check");
   }
 
-  res.json({ received: true });
+  // status=2 means payment approved/completed
+  if (status !== "2") {
+    logger.info({ status }, "Payoneer IPN ignored — not a completed payment");
+    res.send("OK");
+    return;
+  }
+
+  if (!p_email) {
+    logger.warn("Payoneer IPN missing payer email — cannot provision account");
+    res.send("OK");
+    return;
+  }
+
+  const name = [p_firstname, p_lastname].filter(Boolean).join(" ") || p_email.split("@")[0] || "Customer";
+
+  try {
+    await createTenantWithCredentials({ name, email: p_email, plan: "starter" });
+    logger.info({ ref, email: p_email }, "Tenant provisioned from Payoneer IPN");
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    // If tenant already exists (duplicate payment), just log and ack
+    if (message.includes("unique") || message.includes("duplicate") || message.includes("already")) {
+      logger.info({ email: p_email }, "Payoneer IPN: tenant already exists, skipping");
+    } else {
+      logger.error({ err, email: p_email }, "Failed to provision tenant from Payoneer IPN");
+    }
+  }
+
+  res.send("OK");
 });
 
 export default router;
