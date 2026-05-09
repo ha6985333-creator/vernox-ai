@@ -43,6 +43,10 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
+app.get("/login", (_req, res) => {
+  res.sendFile(join(__dirname, "../public/login.html"));
+});
+
 app.use("/admin", (req, res, next) => {
   if (!req.path.includes(".")) {
     res.sendFile(join(__dirname, "../public/admin/index.html"));
