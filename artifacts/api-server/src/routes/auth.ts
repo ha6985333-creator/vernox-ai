@@ -51,4 +51,17 @@ router.get("/auth/me", (req, res) => {
   res.json({ userId: req.session.userId, role: req.session.role, email: req.session.email });
 });
 
+router.get("/auth/tenant", async (req, res) => {
+  if (!req.session.userId) {
+    res.status(401).json({ error: "Not authenticated" });
+    return;
+  }
+  const user = await db.query.usersTable.findFirst({ where: (u, { eq }) => eq(u.id, req.session.userId!) });
+  if (!user?.tenantId) {
+    res.status(404).json({ error: "No tenant found" });
+    return;
+  }
+  res.json({ tenantId: user.tenantId });
+});
+
 export default router;
