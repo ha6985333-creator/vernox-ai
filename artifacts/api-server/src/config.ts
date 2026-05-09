@@ -1,10 +1,20 @@
 // ─────────────────────────────────────────────────────────────
 //  BUSINESS CONFIGURATION
-//  Swap the BUSINESS_TYPE and tweak SYSTEM_PROMPT to re-purpose
-//  this widget for any industry (plumber, dentist, law firm, etc.)
+//  Swap the values below to re-purpose this widget for any
+//  industry (plumber, dentist, law firm, etc.)
 // ─────────────────────────────────────────────────────────────
 
 export const BUSINESS_TYPE = "plumber";
+
+export const BUSINESS_NAME = process.env["BUSINESS_NAME"] ?? "Our Plumbing Service";
+
+// Primary contact email for the business owner — booking notifications go here.
+// Falls back to NOTIFY_EMAIL if BUSINESS_EMAIL is not set.
+export const BUSINESS_EMAIL =
+  process.env["BUSINESS_EMAIL"] ?? process.env["NOTIFY_EMAIL"] ?? "";
+
+// Google Calendar ID to add bookings to ("primary" uses the connected account's default calendar)
+export const CALENDAR_ID = process.env["CALENDAR_ID"] ?? "primary";
 
 export const SYSTEM_PROMPT = `
 You are a friendly and professional AI assistant for a ${BUSINESS_TYPE}.

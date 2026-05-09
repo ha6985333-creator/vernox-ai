@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import Groq from "groq-sdk";
 import { SYSTEM_PROMPT } from "../config.js";
 import { sendConfirmationEmail, type BookingDetails } from "../lib/email.js";
+import { addCalendarEvent } from "../lib/calendar.js";
 
 const router: IRouter = Router();
 
@@ -58,7 +59,11 @@ router.post("/chat", async (req, res) => {
     const { clean, booking } = extractBooking(rawReply);
 
     if (booking?.email) {
-      sendConfirmationEmail(booking).catch(() => {});
+      // Fire both in parallel — neither blocks the chat response
+      Promise.all([
+        sendConfirmationEmail(booking).catch(() => {}),
+        addCalendarEvent(booking).catch(() => {}),
+      ]);
     }
 
     res.json({ message: clean, bookingConfirmed: !!booking });

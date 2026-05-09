@@ -14,6 +14,7 @@ runButton = "Project"
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true
+integrations = ["google-calendar:1.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
@@ -32,3 +33,8 @@ externalPort = 80
 [userenv.shared]
 NOTIFY_EMAIL = "ha6985333@gmail.com"
 ADMIN_EMAIL = "ha6985333@gmail.com"
+BUSINESS_NAME = "Our Plumbing Service"
+BUSINESS_EMAIL = "ha6985333@gmail.com"
+
+[nix]
+channel = "stable-25_05"

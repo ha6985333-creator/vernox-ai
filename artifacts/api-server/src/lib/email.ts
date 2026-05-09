@@ -1,6 +1,6 @@
 import { Resend } from "resend";
 import { logger } from "./logger.js";
-import { BUSINESS_TYPE } from "../config.js";
+import { BUSINESS_TYPE, BUSINESS_NAME, BUSINESS_EMAIL } from "../config.js";
 
 export interface BookingDetails {
   name: string;
@@ -24,57 +24,59 @@ function getResend(): Resend | null {
   return new Resend(apiKey);
 }
 
-function notifyTarget(email: string): string {
-  return process.env["NOTIFY_EMAIL"] || email;
-}
-
 export async function sendConfirmationEmail(booking: BookingDetails): Promise<void> {
   const resend = getResend();
   if (!resend) { logger.warn("RESEND_API_KEY not set — skipping booking email"); return; }
 
-  const to = notifyTarget(booking.email);
+  // Notification goes to the business owner's configured email
+  const to = BUSINESS_EMAIL;
+  if (!to) { logger.warn("BUSINESS_EMAIL not configured — skipping booking notification"); return; }
+
   const { error } = await resend.emails.send({
     from: "onboarding@resend.dev",
     to,
-    subject: `New Booking: ${booking.name} — ${booking.datetime}`,
+    subject: `📅 New Booking: ${booking.name} — ${booking.datetime}`,
     html: `
       <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#f9fafb;border-radius:12px;">
         <div style="background:#4f46e5;border-radius:8px;padding:24px;text-align:center;margin-bottom:24px;">
           <h1 style="color:#fff;margin:0;font-size:1.5rem;">New Appointment Booking</h1>
+          <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:0.9rem;">${BUSINESS_NAME}</p>
         </div>
-        <p style="color:#374151;">A new appointment was booked via the chat widget.</p>
+        <p style="color:#374151;">A new appointment was booked via your chat widget.</p>
         <table style="width:100%;border-collapse:collapse;margin:20px 0;">
           <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;width:40%;">Customer</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${booking.name}</td></tr>
           <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Issue</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${booking.issue}</td></tr>
           <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Date &amp; Time</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${booking.datetime}</td></tr>
           <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Service Address</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${booking.address}</td></tr>
           <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Phone</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${booking.phone}</td></tr>
-          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Email</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${booking.email}</td></tr>
+          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Customer Email</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${booking.email}</td></tr>
         </table>
-        <p style="color:#6b7280;font-size:0.85rem;">— ${BUSINESS_TYPE} chat widget</p>
+        <p style="color:#6b7280;font-size:0.85rem;margin-top:16px;">This event has been added to your Google Calendar automatically.</p>
+        <p style="color:#6b7280;font-size:0.85rem;">— ${BUSINESS_NAME} chat widget</p>
       </div>`,
   });
 
-  if (error) logger.error({ error }, "Failed to send booking email");
-  else logger.info({ to }, "Booking notification email sent");
+  if (error) logger.error({ error }, "Failed to send booking notification email");
+  else logger.info({ to }, "Booking notification sent to business owner");
 }
 
 export async function sendCredentialsEmail(input: CredentialsEmailInput): Promise<void> {
   const resend = getResend();
   if (!resend) { logger.warn("RESEND_API_KEY not set — skipping credentials email"); return; }
 
-  // Credentials always go to the actual customer, never redirected to NOTIFY_EMAIL
+  // Credentials always go directly to the customer
   const to = input.email;
   const loginUrl = `https://${process.env["REPLIT_DOMAINS"]}/login`;
 
   const { error } = await resend.emails.send({
     from: "onboarding@resend.dev",
     to,
-    subject: `Your account is ready — ${BUSINESS_TYPE}`,
+    subject: `Your account is ready — ${BUSINESS_NAME}`,
     html: `
       <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#f9fafb;border-radius:12px;">
         <div style="background:#4f46e5;border-radius:8px;padding:24px;text-align:center;margin-bottom:24px;">
           <h1 style="color:#fff;margin:0;font-size:1.5rem;">Welcome, ${input.name}!</h1>
+          <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:0.9rem;">${BUSINESS_NAME}</p>
         </div>
         <p style="color:#374151;">Your <strong>${input.plan}</strong> account has been created. Here are your login credentials:</p>
         <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin:20px 0;">
