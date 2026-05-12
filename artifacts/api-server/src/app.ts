@@ -46,6 +46,10 @@ app.get("/login", (_req, res) => {
   res.sendFile(join(__dirname, "../public/login.html"));
 });
 
+app.get("/demo", (_req, res) => {
+  res.sendFile(join(__dirname, "../public/demo.html"));
+});
+
 app.use("/admin", (req, res, next) => {
   if (!req.path.includes(".")) {
     res.sendFile(join(__dirname, "../public/admin/index.html"));

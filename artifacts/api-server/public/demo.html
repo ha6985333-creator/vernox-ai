@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LeadBot AI — Live Demo</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+  <!-- Background page (simulates a real site) -->
+  <div class="page-bg">
+    <div class="page-hero">
+      <h1>Welcome</h1>
+      <p>Our AI assistant is here to help you get started.</p>
+    </div>
+  </div>
+
+  <!-- Chat toggle bubble (visible when chat is closed) -->
+  <button class="chat-bubble" id="chatBubble" aria-label="Open chat" style="display:none">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+    <span class="bubble-label">Chat with us</span>
+  </button>
+
+  <!-- Chat Window -->
+  <div class="chat-window" id="chatWindow" role="dialog" aria-label="Chat window">
+    <div class="chat-header">
+      <div class="header-avatar">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2a5 5 0 1 1 0 10A5 5 0 0 1 12 2zm0 12c5.33 0 8 2.67 8 4v2H4v-2c0-1.33 2.67-4 8-4z"/>
+        </svg>
+      </div>
+      <div class="header-info">
+        <span class="header-name">AI Assistant</span>
+        <span class="header-status"><span class="status-dot"></span> Online now</span>
+      </div>
+      <button class="close-btn" id="closeBtn" aria-label="Close chat">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="chat-messages" id="chatMessages"></div>
+
+    <div class="chat-input-area">
+      <textarea
+        id="userInput"
+        class="chat-input"
+        placeholder="Type your message…"
+        rows="1"
+        aria-label="Your message"
+      ></textarea>
+      <button class="send-btn" id="sendBtn" aria-label="Send message">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
