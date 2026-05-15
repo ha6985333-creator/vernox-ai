@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Vernox AI – LeadBot"
+version = "1.0.0"
+id = "artifacts/main-site"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23303
+
+[services.development]
+run = "pnpm --filter @workspace/main-site run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/main-site", "run", "build" ]
+publicDir = "artifacts/main-site/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23303"
+BASE_PATH = "/"
