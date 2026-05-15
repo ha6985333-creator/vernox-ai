@@ -644,6 +644,29 @@ body {
 .price-currency { font-size: 1.4rem; font-weight: 700; }
 .price-amount   { font-size: 3rem; font-weight: 800; line-height: 1; }
 .price-period   { font-size: 0.9rem; color: var(--text-muted); }
+.pricing-initial-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+  margin-top: -8px;
+  margin-bottom: 14px;
+}
+.pricing-then {
+  background: var(--accent-light);
+  border: 1px solid rgba(79,70,229,0.2);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  color: var(--text);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+.pricing-then strong {
+  color: var(--accent);
+  font-weight: 700;
+}
 .pricing-tagline {
   font-size: 0.88rem;
   color: var(--text-muted);
