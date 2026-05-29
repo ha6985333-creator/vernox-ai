@@ -23,6 +23,30 @@ publicDir = "artifacts/main-site/dist/public"
 serve = "static"
 
 [[services.production.rewrites]]
+from = "/login"
+to = "/login.html"
+
+[[services.production.rewrites]]
+from = "/demo"
+to = "/demo.html"
+
+[[services.production.rewrites]]
+from = "/admin"
+to = "/admin/index.html"
+
+[[services.production.rewrites]]
+from = "/admin/*"
+to = "/admin/index.html"
+
+[[services.production.rewrites]]
+from = "/portal"
+to = "/portal/index.html"
+
+[[services.production.rewrites]]
+from = "/portal/*"
+to = "/portal/index.html"
+
+[[services.production.rewrites]]
 from = "/*"
 to = "/index.html"
 
