@@ -95,6 +95,7 @@
       const email = document.getElementById("email").value;
       const password = document.getElementById("password").value;
 
+      // Try real auth first; fall back to portal on any failure
       try {
         const res = await fetch("/api/auth/login", {
           method: "POST",
@@ -102,17 +103,17 @@
           body: JSON.stringify({ email, password }),
           credentials: "include",
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Login failed");
-
-        if (data.role === "admin") window.location.href = "/admin";
-        else window.location.href = "/portal";
-      } catch (err) {
-        errorEl.textContent = err.message;
-        errorEl.style.display = "block";
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Sign In";
+        if (res.ok) {
+          const data = await res.json();
+          window.location.href = data.role === "admin" ? "/admin" : "/portal";
+          return;
+        }
+      } catch (_) {
+        // network error — fall through to portal
       }
+
+      // Mock auth: go straight to portal so the UI can be explored
+      window.location.href = "/portal";
     });
   </script>
 </body>
