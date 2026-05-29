@@ -1,0 +1,35 @@
+You completely misunderstood the requirements. I do not want a manual 'Add Review' form. This system is for automated Google Maps review analysis and optimization.
+
+Please completely remove the manual input button and rewrite the Review Management interface and backend using the following strict specifications:
+
+1. Mock Google Maps Data Stream (No Manual Input):
+
+Instead of a form, populate the dashboard with a realistic array of mock Google Maps reviews for a local business (e.g., a dental office or a plumber).
+
+Each review object must contain: reviewer_name, star_rating (1 to 5), review_text, and timestamp. Include a mix of 5-star praises and detailed 1-star/2-star customer complaints.
+
+2. Core Groq AI Processing Engine:
+
+For every review in the system, pass the text and star rating to the Groq API using an optimized system prompt.
+
+The Groq LLM must perform a deep analysis and return three distinct outputs for each review:
+
+Sentiment Analysis: Categorize the tone strictly as Positive, Neutral, or Negative.
+
+Root Cause Analysis (Underlying Problem): Identify exactly where the underlying operational bottleneck is (e.g., 'Long wait times at reception', 'Unprofessional phone etiquette', 'Pricing miscommunication').
+
+Optimization Recommendation: Provide an actionable internal tip for the business owner on how to improve their operations or update their Google listing to prevent this specific issue in the future.
+
+Public Response Draft: A perfectly tailored, professional, public-facing reply to be posted back to Google Maps.
+
+3. Upgraded Dashboard UI Structure:
+
+Build a clean, premium dashboard layout showing the list of Google reviews.
+
+For each review, display the user's name, a visual star rating indicator, and the original review text.
+
+Next to or below each review, create structured visual cards/containers displaying the Groq outputs clearly labeled: [Sentiment], [Underlying Issue], [How to Improve], and [Drafted AI Reply].
+
+Ensure the 'Approve/Publish' button has a mockup function indicating it will push the draft back to the Google Business Profile API.
+
+Do not build placeholder forms. Build the data visualization layout and wire up the backend Groq calls to execute this analysis automatically on load
