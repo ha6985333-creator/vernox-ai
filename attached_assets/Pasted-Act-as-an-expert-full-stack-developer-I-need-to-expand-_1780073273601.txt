@@ -1,0 +1,39 @@
+Act as an expert full-stack developer. I need to expand my existing web-based AI reservation system into a unified SaaS product called Vernox. I am building this in my current Replit Core environment.
+
+Your goal is to build and integrate a new AI-powered Review Management System module, while completely preserving my existing reservation system. They must live together in a cohesive, professional dashboard.
+
+Here are the strict technical requirements and features you need to build:
+
+1. Unified Dashboard Architecture:
+
+Create a main SaaS dashboard layout with a persistent sidebar navigation menu.
+
+The sidebar must have distinct, dedicated tabs: 'Reservations' (linking to my existing widget/system), 'Review Management', and 'Settings'.
+
+Ensure the new UI does not overwrite my existing reservation code, but rather integrates it into this new unified layout.
+
+2. LLM Integration (Strictly Groq):
+
+Integrate the Groq API for all AI and natural language processing tasks within the Review module. Do not use OpenAI or any other paid APIs. Optimize the code to work within Groq's free-tier rate limits.
+
+3. Core Backend Logic (Review Module):
+
+Review Ingestion: Create an endpoint to accept incoming customer reviews (accept standard text inputs for now, structured for future Google Business Profile webhook integration).
+
+Sentiment Analysis: Pass incoming review text to the Groq API to determine sentiment (Positive, Neutral, Negative) and extract key themes.
+
+Auto-Drafting Responses: Use Groq to generate a highly professional, context-aware reply to the review. The prompt sent to Groq must be dynamic enough to adapt to different business types (e.g., dental offices, law firms, restaurants, plumbers).
+
+4. Frontend UI (Review Management Tab):
+
+Within the 'Review Management' section of the dashboard, display a clean list/table of incoming reviews with their AI-assigned sentiment score clearly visible.
+
+Show the AI-drafted response below the original review.
+
+Include action buttons for the business owner to 'Edit', 'Approve/Publish', or 'Regenerate' the AI's response.
+
+5. Modularity and Stability:
+
+Write this as a modular, self-contained feature. Include robust error handling, specifically for Groq API timeouts or empty review text.
+
+Please output the necessary backend and frontend code to achieve this unified product, and tell me exactly how to structure these files in my current directory without breaking my existing reservation widget.
