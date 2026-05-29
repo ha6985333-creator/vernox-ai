@@ -66,7 +66,11 @@ export async function sendCredentialsEmail(input: CredentialsEmailInput): Promis
 
   // Credentials always go directly to the customer
   const to = input.email;
-  const loginUrl = `https://${process.env["REPLIT_DOMAINS"]}/login`;
+  // Use custom domain if set, otherwise fall back to first Replit domain
+  const domain = process.env["SITE_URL"] ||
+    (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim() ||
+    "vernoxai.digital";
+  const loginUrl = `https://${domain}/login`;
 
   const { error } = await resend.emails.send({
     from: "onboarding@resend.dev",

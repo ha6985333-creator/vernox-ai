@@ -46,7 +46,7 @@
     }
     .btn:hover { background: var(--accent-dark); }
     .btn:active { transform: scale(0.98); }
-    .btn:disabled { background: var(--border); color: var(--muted); cursor: default; }
+    .btn:disabled { background: #a5b4fc; cursor: default; }
     .error {
       background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
       border-radius: 8px; padding: 10px 14px; font-size: 0.85rem; display: none;
@@ -86,16 +86,22 @@
     const errorEl = document.getElementById("error");
     const submitBtn = document.getElementById("submitBtn");
 
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.style.display = "block";
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Sign In";
+    }
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       errorEl.style.display = "none";
       submitBtn.disabled = true;
       submitBtn.textContent = "Signing in…";
 
-      const email = document.getElementById("email").value;
+      const email = document.getElementById("email").value.trim();
       const password = document.getElementById("password").value;
 
-      // Try real auth first; fall back to portal on any failure
       try {
         const res = await fetch("/api/auth/login", {
           method: "POST",
@@ -103,17 +109,22 @@
           body: JSON.stringify({ email, password }),
           credentials: "include",
         });
+
         if (res.ok) {
           const data = await res.json();
           window.location.href = data.role === "admin" ? "/admin" : "/portal";
           return;
         }
-      } catch (_) {
-        // network error — fall through to portal
-      }
 
-      // Mock auth: go straight to portal so the UI can be explored
-      window.location.href = "/portal";
+        if (res.status === 401) {
+          showError("Incorrect email or password. Please try again.");
+          return;
+        }
+
+        showError("Something went wrong. Please try again.");
+      } catch (_) {
+        showError("Unable to connect. Please check your internet connection and try again.");
+      }
     });
   </script>
 </body>

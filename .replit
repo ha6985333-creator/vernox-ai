@@ -39,6 +39,7 @@ NOTIFY_EMAIL = "ha6985333@gmail.com"
 ADMIN_EMAIL = "ha6985333@gmail.com"
 BUSINESS_NAME = "Our Plumbing Service"
 BUSINESS_EMAIL = "ha6985333@gmail.com"
+SITE_URL = "vernoxai.digital"
 
 [nix]
 channel = "stable-25_05"
