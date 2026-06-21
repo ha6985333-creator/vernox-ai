@@ -31,6 +31,7 @@ const htmlRewrite: () => import("vite").Plugin = () => ({
     server.middlewares.use((req, _res, next: Connect.NextFunction) => {
       const url = req.url?.split("?")[0] ?? "";
       if (url === "/login") req.url = "/login.html";
+      else if (url === "/buy") req.url = "/buy.html";
       else if (url === "/demo") req.url = "/demo.html";
       else if (url === "/admin" || url === "/admin/") req.url = "/admin/index.html";
       else if (url === "/portal" || url === "/portal/") req.url = "/portal/index.html";
@@ -66,6 +67,7 @@ export default defineConfig({
       input: {
         main: path.resolve(import.meta.dirname, "index.html"),
         login: path.resolve(import.meta.dirname, "login.html"),
+        buy: path.resolve(import.meta.dirname, "buy.html"),
         demo: path.resolve(import.meta.dirname, "demo.html"),
         admin: path.resolve(import.meta.dirname, "admin/index.html"),
         portal: path.resolve(import.meta.dirname, "portal/index.html"),

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thank You — Vernox AI</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --accent: #4f46e5; --accent-dark: #3730a3;
+      --text: #1a1a1a; --muted: #6b7280;
+      --border: #e5e7eb; --bg: #f9fafb;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: #1a1a1a;
+      min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .card {
+      background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 40px 36px;
+      width: 100%; max-width: 460px; text-align: center;
+    }
+    .check {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: #ecfdf5; display: inline-flex; align-items: center; justify-content: center;
+      margin-bottom: 22px;
+    }
+    .check svg { width: 28px; height: 28px; color: #059669; }
+    h1 { font-size: 1.4rem; font-weight: 700; color: var(--text); margin-bottom: 10px; letter-spacing: -0.01em; }
+    .lead { color: var(--muted); font-size: 0.95rem; line-height: 1.6; }
+    .steps {
+      text-align: left; margin: 28px 0 8px; border: 1px solid var(--border);
+      border-radius: 8px; overflow: hidden;
+    }
+    .step {
+      display: flex; gap: 14px; padding: 16px 18px; align-items: flex-start;
+    }
+    .step + .step { border-top: 1px solid var(--border); }
+    .step-num {
+      flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
+      background: var(--accent); color: #fff; font-size: 0.8rem; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .step-body h3 { font-size: 0.9rem; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+    .step-body p { font-size: 0.83rem; color: var(--muted); line-height: 1.5; }
+    .note {
+      margin-top: 22px; font-size: 0.83rem; color: var(--muted); line-height: 1.6;
+    }
+    .note strong { color: var(--text); }
+    .back { margin-top: 26px; }
+    .back a { color: var(--muted); text-decoration: none; font-size: 0.82rem; }
+    .back a:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="check">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </div>
+    <h1>Thanks for choosing Vernox AI</h1>
+    <p class="lead">We've received your request. Here's what happens next.</p>
+
+    <div class="steps">
+      <div class="step">
+        <span class="step-num">1</span>
+        <div class="step-body">
+          <h3>You'll get your payment link</h3>
+          <p>Our team will contact you shortly with a secure link to complete your $899/month subscription.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">2</span>
+        <div class="step-body">
+          <h3>Your login credentials arrive</h3>
+          <p>Once payment is confirmed, we'll email your account email and password so you can sign in to your dashboard.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">3</span>
+        <div class="step-body">
+          <h3>We set up your AI assistant</h3>
+          <p>Full onboarding is included — your chat widget will be live and qualifying leads in no time.</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="note">Questions in the meantime? Email us at <strong>ha6985333@gmail.com</strong>.</p>
+
+    <div class="back"><a href="/">← Back to home</a></div>
+  </div>
+</body>
+</html>

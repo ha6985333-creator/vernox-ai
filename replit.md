@@ -46,6 +46,7 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 | URL | Description |
 |---|---|
 | `/` | Chat widget (main product) |
+| `/buy` | "Buy Now" thank-you page — explains user will be contacted with payment link, then login credentials |
 | `/login` | Login page for admin + tenants |
 | `/admin` | Master admin dashboard (admin only) |
 | `/portal` | Tenant landing page after login |
@@ -81,7 +82,8 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 
 - Business type: plumber (change in config.ts)
 - Notify email: ha6985333@gmail.com
-- Payment provider: ElevatePay (to be integrated later once website is live)
+- Pricing: $899/month, no setup fee
+- Payment provider: manual for now — "Buy Now" sends users to `/buy`; team contacts them with a payment link, then emails login credentials after payment. (Payoneer IPN webhook still exists in code but is not the active flow.)
 
 ## Gotchas
 
