@@ -142,6 +142,17 @@
     .setting-info h3 { font-size: 0.9rem; font-weight: 600; margin-bottom: 3px; }
     .setting-info p { font-size: 0.8rem; color: var(--muted); }
     .setting-value { font-size: 0.85rem; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; white-space: nowrap; }
+    .pw-form { display: flex; flex-direction: column; gap: 16px; max-width: 380px; }
+    .pw-field { display: flex; flex-direction: column; gap: 6px; }
+    .pw-field label { font-size: 0.8rem; font-weight: 600; color: var(--text); }
+    .pw-field input { padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.875rem; font-family: inherit; outline: none; color: var(--text); transition: border-color 0.15s; }
+    .pw-field input:focus { border-color: var(--accent); }
+    .pw-msg { font-size: 0.82rem; display: none; padding: 9px 12px; border-radius: 6px; }
+    .pw-msg:not(.pw-msg-ok) { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+    .pw-msg-ok { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+    .btn-pw { align-self: flex-start; padding: 10px 18px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-size: 0.875rem; font-weight: 600; cursor: pointer; font-family: inherit; height: 40px; transition: background 0.15s; }
+    .btn-pw:hover { background: var(--accent-dark, #3730a3); }
+    .btn-pw:disabled { opacity: 0.6; cursor: default; }
 
     /* ── Spinner ─────────────────────────────────────────────── */
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -400,6 +411,28 @@
               <div class="setting-info"><h3>Widget Status</h3><p>Current state of your chat widget</p></div>
               <div class="setting-value" style="color:var(--positive);background:var(--positive-bg);border-color:var(--positive-border);">● Active</div>
             </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h2>Change Password</h2><p>Update the password you use to sign in.</p></div>
+          <div class="card-body">
+            <form id="pwForm" class="pw-form" autocomplete="off">
+              <div class="pw-field">
+                <label for="pwCurrent">Current password</label>
+                <input type="password" id="pwCurrent" autocomplete="current-password" required />
+              </div>
+              <div class="pw-field">
+                <label for="pwNew">New password</label>
+                <input type="password" id="pwNew" autocomplete="new-password" placeholder="At least 8 characters" required />
+              </div>
+              <div class="pw-field">
+                <label for="pwConfirm">Confirm new password</label>
+                <input type="password" id="pwConfirm" autocomplete="new-password" required />
+              </div>
+              <div class="pw-msg" id="pwError"></div>
+              <div class="pw-msg pw-msg-ok" id="pwSuccess"></div>
+              <button type="submit" class="btn-pw" id="pwSubmit">Update Password</button>
+            </form>
           </div>
         </div>
         <div class="card">
@@ -1042,7 +1075,46 @@
       }
     }
 
-    // ── Logout ────────────────────────────────────────────────────
+    // ── Change Password ───────────────────────────────────────────
+    document.getElementById("pwForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById("pwError");
+      const okEl = document.getElementById("pwSuccess");
+      const btn = document.getElementById("pwSubmit");
+      errEl.style.display = "none"; okEl.style.display = "none";
+
+      const currentPassword = document.getElementById("pwCurrent").value;
+      const newPassword = document.getElementById("pwNew").value;
+      const confirm = document.getElementById("pwConfirm").value;
+
+      if (newPassword.length < 8) { errEl.textContent = "New password must be at least 8 characters."; errEl.style.display = "block"; return; }
+      if (newPassword !== confirm) { errEl.textContent = "New passwords do not match."; errEl.style.display = "block"; return; }
+
+      btn.disabled = true; btn.textContent = "Updating…";
+      try {
+        const res = await fetch("/api/auth/change-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ currentPassword, newPassword }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          okEl.textContent = "Password updated. Use your new password next time you sign in.";
+          okEl.style.display = "block";
+          document.getElementById("pwForm").reset();
+        } else {
+          errEl.textContent = data.error || "Could not update password.";
+          errEl.style.display = "block";
+        }
+      } catch (_) {
+        errEl.textContent = "Unable to connect. Please try again.";
+        errEl.style.display = "block";
+      } finally {
+        btn.disabled = false; btn.textContent = "Update Password";
+      }
+    });
+
     document.getElementById("logoutBtn").addEventListener("click", async () => {
       await fetch("/api/auth/logout", { method:"POST", credentials:"include" }).catch(()=>{});
       window.location.href = "/login";

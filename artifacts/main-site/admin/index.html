@@ -43,6 +43,8 @@
     .btn-sm { padding: 5px 12px; font-size: 0.78rem; border-radius: 4px; height: 30px; }
     .btn-danger { background: #dc2626; }
     .btn-danger:hover { background: #b91c1c; }
+    .btn-delete { background: #fff; color: #dc2626; border: 1px solid #fecaca; }
+    .btn-delete:hover { background: #fef2f2; border-color: #dc2626; }
     .btn-ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
     .btn-ghost:hover { background: var(--accent-light); }
     .table-wrap { background: #fff; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
@@ -205,12 +207,23 @@
           <td><span class="badge badge-plan">${esc(t.plan)}</span></td>
           <td><span class="badge badge-${t.status}">${esc(t.status)}</span></td>
           <td>${new Date(t.createdAt).toLocaleDateString()}</td>
-          <td>${t.status === "active" ? `<button class="btn btn-sm btn-danger" onclick="setStatus('${t.id}','suspended')">Suspend</button>` : `<button class="btn btn-sm" onclick="setStatus('${t.id}','active')">Activate</button>`}</td>
+          <td>
+            <div style="display:flex;gap:6px;">
+              ${t.status === "active" ? `<button class="btn btn-sm btn-danger" onclick="setStatus('${t.id}','suspended')">Suspend</button>` : `<button class="btn btn-sm" onclick="setStatus('${t.id}','active')">Activate</button>`}
+              <button class="btn btn-sm btn-delete" onclick="deleteTenant('${t.id}','${esc(t.name).replace(/'/g, "\\'")}')">Delete</button>
+            </div>
+          </td>
         </tr>`).join("");
     }
     async function setStatus(id, status) {
       await apiFetch(`/admin/tenants/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
       loadTenants(); loadStats();
+    }
+    async function deleteTenant(id, name) {
+      if (!confirm(`Permanently delete "${name}" and their login account? This cannot be undone.`)) return;
+      const res = await apiFetch(`/admin/tenants/${id}`, { method: "DELETE" });
+      if (res && res.ok) { loadTenants(); loadStats(); }
+      else { alert(res?.error || "Failed to delete customer."); }
     }
     function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
     function copyText(elId) {

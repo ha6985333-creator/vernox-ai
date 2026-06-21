@@ -54,4 +54,17 @@ router.patch("/tenants/:id/status", async (req, res) => {
   res.json({ ok: true });
 });
 
+router.delete("/tenants/:id", async (req, res) => {
+  const { eq } = await import("drizzle-orm");
+  const id = req.params.id!;
+
+  const tenant = await db.query.tenantsTable.findFirst({ where: (t, { eq: e }) => e(t.id, id) });
+  if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
+
+  // Deleting the tenant cascades to users, leads, follow-ups and reviews
+  // (all FKs use onDelete: "cascade"), so this single statement is atomic.
+  await db.delete(tenantsTable).where(eq(tenantsTable.id, id));
+  res.json({ ok: true });
+});
+
 export default router;
