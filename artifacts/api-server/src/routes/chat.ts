@@ -3,6 +3,8 @@ import Groq from "groq-sdk";
 import { SYSTEM_PROMPT } from "../config.js";
 import { sendConfirmationEmail, type BookingDetails } from "../lib/email.js";
 import { addCalendarEvent } from "../lib/calendar.js";
+import { db } from "@workspace/db";
+import { leadsTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -28,6 +30,29 @@ function extractBooking(reply: string): { clean: string; booking: BookingDetails
   }
 }
 
+async function captureLead(booking: BookingDetails, tenantId: string): Promise<void> {
+  const now = new Date();
+  const firstFollowUp = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+
+  let preferredDatetime: Date | undefined;
+  if (booking.datetime) {
+    const parsed = new Date(booking.datetime);
+    if (!isNaN(parsed.getTime())) preferredDatetime = parsed;
+  }
+
+  await db.insert(leadsTable).values({
+    tenantId,
+    visitorName: booking.name || "Unknown",
+    visitorEmail: booking.email || "",
+    visitorPhone: booking.phone || "",
+    visitorAddress: booking.address || "",
+    serviceIssue: booking.issue || "",
+    preferredDatetime: preferredDatetime ?? null,
+    status: "new",
+    nextFollowUpDate: firstFollowUp,
+  });
+}
+
 router.post("/chat", async (req, res) => {
   const apiKey = process.env["GROQ_API_KEY"];
   if (!apiKey) {
@@ -35,7 +60,7 @@ router.post("/chat", async (req, res) => {
     return;
   }
 
-  const { messages } = req.body as { messages: ChatMessage[] };
+  const { messages, tenantId } = req.body as { messages: ChatMessage[]; tenantId?: string };
 
   if (!Array.isArray(messages) || messages.length === 0) {
     res.status(400).json({ error: "messages array is required." });
@@ -59,11 +84,22 @@ router.post("/chat", async (req, res) => {
     const { clean, booking } = extractBooking(rawReply);
 
     if (booking?.email) {
-      // Fire both in parallel — neither blocks the chat response
-      Promise.all([
+      // Fire all side-effects in parallel — none block the chat response
+      const sideEffects: Promise<void>[] = [
         sendConfirmationEmail(booking).catch(() => {}),
         addCalendarEvent(booking).catch(() => {}),
-      ]);
+      ];
+
+      // Capture lead if we have a tenantId (from embed widget)
+      if (tenantId) {
+        sideEffects.push(
+          captureLead(booking, tenantId).catch((err) => {
+            req.log.error({ err, tenantId }, "Failed to capture lead");
+          })
+        );
+      }
+
+      Promise.all(sideEffects);
     }
 
     res.json({ message: clean, bookingConfirmed: !!booking });

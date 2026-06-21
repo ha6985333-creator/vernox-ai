@@ -10,6 +10,9 @@
   const closeBtn     = document.getElementById("closeBtn");
   const chatBubble   = document.getElementById("chatBubble");
 
+  // Read tenant ID from URL query param (set by embed script: ?t=<tenantId>)
+  const widgetTenantId = new URLSearchParams(window.location.search).get("t") || "";
+
   let isLoading = false;
   let messages  = [];
   let typingEl  = null;
@@ -81,10 +84,13 @@
     showTyping();
 
     try {
+      const body = { messages };
+      if (widgetTenantId) body.tenantId = widgetTenantId;
+
       const res  = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -115,10 +121,13 @@
     showTyping();
 
     try {
+      const body = { messages: [{ role: "user", content: "Hello" }] };
+      if (widgetTenantId) body.tenantId = widgetTenantId;
+
       const res  = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [{ role: "user", content: "Hello" }] }),
+        body: JSON.stringify(body),
       });
       const data  = await res.json();
       const reply = data.message || "Hi there! How can I help you today?";

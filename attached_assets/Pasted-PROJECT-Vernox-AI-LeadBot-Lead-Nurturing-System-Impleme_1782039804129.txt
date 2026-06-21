@@ -1,0 +1,234 @@
+PROJECT: Vernox AI LeadBot — Lead Nurturing System Implementation
+
+SCOPE: Build a complete lead nurturing module with backend automation and frontend tenant dashboard.
+
+YOUR CODEBASE STRUCTURE:
+- Backend: artifacts/api-server/src/
+- Database: lib/db/src/schema/
+- Frontend: artifacts/main-site/ (portal/index.html)
+- Config: artifacts/api-server/src/config.ts
+
+TASK 1: DATABASE SCHEMA
+Add a new table to lib/db/src/schema/leads.ts (create this file):
+
+CREATE TABLE leads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  visitor_name TEXT NOT NULL,
+  visitor_email TEXT NOT NULL,                  -- SENSITIVE: never expose in URL
+  visitor_phone TEXT NOT NULL,                  -- SENSITIVE: never expose in URL
+  visitor_address TEXT NOT NULL,                -- SENSITIVE: never expose in URL
+  service_issue TEXT NOT NULL,
+  preferred_datetime TIMESTAMP,
+  status TEXT NOT NULL DEFAULT 'new',           -- 'new' | 'contacted' | 'converted' | 'unsubscribed'
+  follow_up_count INTEGER DEFAULT 0,
+  last_contact_date TIMESTAMP,
+  next_follow_up_date TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE lead_follow_ups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  channel TEXT NOT NULL,                        -- 'email' | 'sms' | 'whatsapp'
+  message_number INTEGER NOT NULL,              -- 1, 2, 3
+  sent_at TIMESTAMP,
+  opened_at TIMESTAMP,
+  clicked_at TIMESTAMP,
+  status TEXT NOT NULL DEFAULT 'pending',       -- 'pending' | 'sent' | 'failed'
+  created_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+Add to lib/db/src/schema/index.ts:
+  export { leadsTable, leadFollowUpsTable } from './leads.js';
+
+TASK 2: BACKEND ROUTES
+Create artifacts/api-server/src/routes/leads.ts with these endpoints (ALL REQUIRE AUTH + TENANT ISOLATION):
+
+GET /api/leads
+- Requires auth middleware: if (!req.session.userId) return 401
+- Fetch tenant_id from req.session.userId → users table
+- Return only leads WHERE tenant_id = session tenant_id
+- Order by created_at DESC
+- Never expose raw visitor_email/phone in list view — mask as: "****@example.com", "+1****5678"
+- Response: [{ id, visitor_name, status, service_issue, follow_up_count, created_at, next_follow_up_date }]
+
+GET /api/leads/:leadId
+- Auth required
+- Tenant isolation: verify lead.tenant_id matches session.tenantId
+- Return full lead ONLY if authorized
+- Response includes: id, visitor_name, visitor_email (UNMASKED, backend only), visitor_phone, visitor_address, service_issue, status, follow_up_count, created_at, next_follow_up_date
+
+POST /api/leads/:leadId/contact
+- Auth required, tenant isolation
+- Body: { channel: 'email' | 'sms' | 'whatsapp', message_number: 1 | 2 | 3 }
+- Validation: lead must exist, lead.status !== 'unsubscribed', follow_up_count < 3
+- Insert into lead_follow_ups with status: 'pending'
+- Trigger actual send in background (don't block response):
+  - Email: sendLeadFollowUp(lead, channel, messageNumber) → Resend
+  - SMS/WhatsApp: placeholder (return success, note "Coming soon")
+- Update leads: follow_up_count++, last_contact_date = now, next_follow_up_date = now + 24h
+- Response: { ok: true, messageId: string }
+
+POST /api/leads/:leadId/mark-converted
+- Auth required, tenant isolation
+- Sets lead.status = 'converted'
+- Response: { ok: true }
+
+POST /api/leads/:leadId/unsubscribe
+- Auth required, tenant isolation
+- Sets lead.status = 'unsubscribed'
+- Response: { ok: true }
+
+GET /api/leads/stats
+- Auth required, tenant isolation
+- Count leads by status (new, contacted, converted, unsubscribed)
+- Count total follow-ups sent
+- Count emails opened (sum of follow_ups WHERE opened_at IS NOT NULL)
+- Calculate conversion rate: (converted / total) * 100
+- Response: { totalLeads, newLeads, contactedLeads, convertedLeads, unsubscribedLeads, totalFollowUpsSent, emailsOpened, conversionRate }
+
+TASK 3: LEAD CAPTURE INTEGRATION
+In artifacts/api-server/src/routes/chat.ts:
+When BOOKING_COMPLETE:: is detected and booking is confirmed:
+- Extract tenant_id from the session or embed context (you may need to pass this from the widget)
+- Insert into leads table: { tenant_id, visitor_name, visitor_email, visitor_phone, visitor_address, service_issue, preferred_datetime: booking.datetime, status: 'new' }
+- Set next_follow_up_date = now + 2h (first follow-up in 2 hours)
+- Return booking response as normal
+
+TASK 4: FRONTEND — LEAD NURTURING TAB IN PORTAL
+In artifacts/main-site/portal/index.html:
+Add a new tab link in the sidebar: "Lead Nurturing"
+When clicked, set location.hash = "#leads"
+
+Create a new section for the leads tab:
+<section id="leads-tab" class="tab-content">
+  <!-- STATS CARDS -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Leads</div>
+      <div class="stat-value" id="totalLeadsCount">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">New Leads</div>
+      <div class="stat-value" id="newLeadsCount">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Converted</div>
+      <div class="stat-value" id="convertedLeadsCount">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Conversion Rate</div>
+      <div class="stat-value" id="conversionRate">0%</div>
+    </div>
+  </div>
+
+  <!-- LEADS TABLE -->
+  <div class="leads-table-container">
+    <h3>Recent Leads</h3>
+    <table id="leadsTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Contact</th>
+          <th>Service</th>
+          <th>Status</th>
+          <th>Follow-ups</th>
+          <th>Next Contact</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="leadsTableBody">
+        <!-- Populated by JS -->
+      </tbody>
+    </table>
+  </div>
+</section>
+
+TASK 5: FRONTEND JAVASCRIPT (in portal/index.html or separate app.js)
+const loadLeads = async () => {
+  const response = await fetch("/api/leads", { credentials: "include" });
+  if (response.status === 401) { showLoggedOutMessage(); return; }
+  if (!response.ok) { showError("Failed to load leads"); return; }
+  const leads = await response.json();
+  
+  // Render stats
+  const stats = await fetch("/api/leads/stats", { credentials: "include" }).then(r => r.json());
+  document.getElementById("totalLeadsCount").textContent = stats.totalLeads;
+  document.getElementById("newLeadsCount").textContent = stats.newLeads;
+  document.getElementById("convertedLeadsCount").textContent = stats.convertedLeads;
+  document.getElementById("conversionRate").textContent = stats.conversionRate.toFixed(1) + "%";
+  
+  // Render table
+  const tbody = document.getElementById("leadsTableBody");
+  tbody.innerHTML = leads.map(lead => `
+    <tr>
+      <td>${esc(lead.visitor_name)}</td>
+      <td>${lead.visitor_email ? lead.visitor_email.substring(0, 3) + "****@example.com" : "—"}</td>
+      <td>${esc(lead.service_issue.substring(0, 30))}</td>
+      <td><span class="status-badge status-${lead.status}">${lead.status}</span></td>
+      <td>${lead.follow_up_count}/3</td>
+      <td>${lead.next_follow_up_date ? new Date(lead.next_follow_up_date).toLocaleDateString() : "—"}</td>
+      <td>
+        <button onclick="contactLead('${lead.id}', 'email')">Email</button>
+        ${lead.status !== 'converted' ? `<button onclick="markConverted('${lead.id}')">Converted</button>` : ""}
+        <button onclick="unsubscribeLead('${lead.id}')">Unsubscribe</button>
+      </td>
+    </tr>
+  `).join("");
+};
+
+const contactLead = async (leadId, channel) => {
+  const response = await fetch(`/api/leads/${leadId}/contact`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ channel, message_number: 1 })
+  });
+  if (response.ok) { alert("Follow-up sent!"); loadLeads(); }
+  else { showError("Failed to send follow-up"); }
+};
+
+const markConverted = async (leadId) => {
+  const response = await fetch(`/api/leads/${leadId}/mark-converted`, {
+    method: "POST",
+    credentials: "include"
+  });
+  if (response.ok) { alert("Lead marked as converted!"); loadLeads(); }
+  else { showError("Failed to update lead"); }
+};
+
+const unsubscribeLead = async (leadId) => {
+  if (!confirm("Unsubscribe this lead?")) return;
+  const response = await fetch(`/api/leads/${leadId}/unsubscribe`, {
+    method: "POST",
+    credentials: "include"
+  });
+  if (response.ok) { alert("Lead unsubscribed"); loadLeads(); }
+  else { showError("Failed to unsubscribe"); }
+};
+
+// On tab switch to leads
+window.addEventListener("hashchange", () => {
+  if (location.hash === "#leads") { loadLeads(); }
+});
+
+SECURITY REQUIREMENTS (CRITICAL):
+1. ALL endpoints require auth check: if (!req.session.userId) return 401
+2. ALL endpoints verify tenant isolation: lead.tenant_id must match session.tenantId
+3. NEVER expose visitor_email, visitor_phone, visitor_address in API list views — mask or omit
+4. NEVER include sensitive data in URL paths or query strings
+5. Use req.session (secure HTTP-only cookies) for auth, never URL tokens
+6. Validate message_number is 1–3 on the backend
+7. Validate channel is 'email' | 'sms' | 'whatsapp' on the backend
+8. Rate limit follow-up sends: max 1 per lead per 1 hour (prevent spam)
+9. All errors logged; no sensitive data in error responses
+
+OUTPUT:
+1. lib/db/src/schema/leads.ts — schema + Zod validators
+2. artifacts/api-server/src/routes/leads.ts — all 5 routes with full auth + tenant isolation
+3. Integration code in artifacts/api-server/src/routes/chat.ts (show exact lines to modify)
+4. HTML + JavaScript for portal tab (can be inline in portal/index.html or separate file)
+5. CSS for stats grid + leads table (add to public/style.css or inline)

@@ -164,6 +164,37 @@
     .connected-badge { display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1.5px solid #dadce0; border-radius: 999px; padding: 6px 15px; font-size: 0.78rem; font-weight: 700; color: #3c4043; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
     .connected-badge .dot-green { width: 7px; height: 7px; border-radius: 50%; background: #34a853; flex-shrink: 0; animation: pulse-green 2s ease-in-out infinite; }
     @keyframes pulse-green { 0%,100% { opacity:1; } 50% { opacity:0.45; } }
+
+    /* ── Leads tab ───────────────────────────────────────────── */
+    .leads-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+    @media (max-width: 800px) { .leads-stats-grid { grid-template-columns: repeat(2, 1fr); } }
+    .leads-stat-card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+    .leads-stat-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 8px; }
+    .leads-stat-value { font-size: 1.9rem; font-weight: 800; color: var(--text); line-height: 1; }
+    .leads-table-wrap { background: #fff; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 24px; }
+    .leads-table-header { padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .leads-table-header h3 { font-size: 0.95rem; font-weight: 700; }
+    .leads-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    .leads-table th { padding: 10px 14px; text-align: left; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-bottom: 1px solid var(--border); background: #fafafa; }
+    .leads-table td { padding: 12px 14px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+    .leads-table tr:last-child td { border-bottom: none; }
+    .leads-table tr:hover td { background: #fafafa; }
+    .lead-status { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    .lead-status-new { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .lead-status-contacted { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    .lead-status-converted { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+    .lead-status-unsubscribed { background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; }
+    .lead-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .btn-xs { padding: 4px 10px; font-size: 0.72rem; border-radius: 6px; border: none; cursor: pointer; font-family: inherit; font-weight: 600; transition: background 0.15s; }
+    .btn-xs-blue { background: #eff6ff; color: #1d4ed8; }
+    .btn-xs-blue:hover { background: #dbeafe; }
+    .btn-xs-green { background: #d1fae5; color: #065f46; }
+    .btn-xs-green:hover { background: #a7f3d0; }
+    .btn-xs-red { background: #fee2e2; color: #991b1b; }
+    .btn-xs-red:hover { background: #fecaca; }
+    .btn-xs:disabled { opacity: 0.5; cursor: default; }
+    .leads-empty { text-align: center; padding: 48px 20px; color: var(--muted); font-size: 0.88rem; }
+    .leads-empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
   </style>
 </head>
 <body>
@@ -188,6 +219,12 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
       Review Management
       <span class="nav-badge" id="pendingBadge" style="display:none">0</span>
+    </button>
+
+    <button class="nav-item" data-tab="leads" onclick="switchTab('leads',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Lead Nurturing
+      <span class="nav-badge" id="newLeadsBadge" style="display:none">0</span>
     </button>
 
     <div class="sidebar-section">Account</div>
@@ -270,6 +307,44 @@
         <div id="reviewsContainer"></div>
       </div>
 
+      <!-- ── LEADS TAB ───────────────────────────────────── -->
+      <div class="tab-panel" id="tab-leads">
+        <div class="leads-stats-grid">
+          <div class="leads-stat-card">
+            <div class="leads-stat-label">Total Leads</div>
+            <div class="leads-stat-value" id="stat-totalLeads">—</div>
+          </div>
+          <div class="leads-stat-card">
+            <div class="leads-stat-label">New Leads</div>
+            <div class="leads-stat-value" id="stat-newLeads">—</div>
+          </div>
+          <div class="leads-stat-card">
+            <div class="leads-stat-label">Converted</div>
+            <div class="leads-stat-value" id="stat-converted">—</div>
+          </div>
+          <div class="leads-stat-card">
+            <div class="leads-stat-label">Conversion Rate</div>
+            <div class="leads-stat-value" id="stat-rate">—</div>
+          </div>
+        </div>
+
+        <div class="leads-table-wrap">
+          <div class="leads-table-header">
+            <h3>Recent Leads</h3>
+            <button class="btn btn-sm btn-ghost" onclick="loadLeads()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.71"/></svg>
+              Refresh
+            </button>
+          </div>
+          <div id="leadsContent">
+            <div class="leads-empty">
+              <div class="leads-empty-icon">👥</div>
+              <p>Leads will appear here once visitors book through your chat widget.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ── SETTINGS TAB ────────────────────────────────── -->
       <div class="tab-panel" id="tab-settings">
         <div class="card">
@@ -311,7 +386,7 @@
     // ── Init ─────────────────────────────────────────────────────
     let tenantId = "";
     let isGoogleConnected = false;
-    const tabTitles = { reservations: "Reservations", reviews: "Review Management", settings: "Settings" };
+    const tabTitles = { reservations: "Reservations", reviews: "Review Management", leads: "Lead Nurturing", settings: "Settings" };
 
     async function init() {
       try {
@@ -345,7 +420,7 @@
       });
 
       const hash = location.hash.replace("#","") || "reservations";
-      const target = ["reservations","reviews","settings"].includes(hash) ? hash : "reservations";
+      const target = ["reservations","reviews","leads","settings"].includes(hash) ? hash : "reservations";
       const navBtn = document.querySelector(`[data-tab="${target}"]`);
       if (navBtn) switchTab(target, navBtn);
     }
@@ -359,6 +434,7 @@
       document.getElementById("topbarTitle").textContent = tabTitles[tab] || tab;
       location.hash = tab;
       if (tab === "reviews") loadReviews();
+      if (tab === "leads") loadLeads();
     }
 
     // ── Connect Google Business Profile (mock OAuth) ──────────────
@@ -741,6 +817,147 @@
       return String(s ?? "")
         .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
         .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+    }
+
+    // ── Lead Nurturing ────────────────────────────────────────────
+    async function loadLeads() {
+      const content = document.getElementById("leadsContent");
+      content.innerHTML = `<div style="padding:40px;text-align:center;"><div class="spinner spinner-lg" style="margin:0 auto;"></div></div>`;
+
+      try {
+        const [leadsRes, statsRes] = await Promise.all([
+          fetch("/api/leads", { credentials: "include" }),
+          fetch("/api/leads/stats", { credentials: "include" }),
+        ]);
+
+        if (leadsRes.status === 401) {
+          content.innerHTML = `<div class="leads-empty"><div class="leads-empty-icon">🔒</div><p>Please <a href="/login" style="color:var(--accent)">log in</a> to view your leads.</p></div>`;
+          return;
+        }
+
+        if (!leadsRes.ok || !statsRes.ok) throw new Error("API error");
+
+        const leads = await leadsRes.json();
+        const stats = await statsRes.json();
+
+        document.getElementById("stat-totalLeads").textContent = stats.totalLeads;
+        document.getElementById("stat-newLeads").textContent = stats.newLeads;
+        document.getElementById("stat-converted").textContent = stats.convertedLeads;
+        document.getElementById("stat-rate").textContent = (stats.conversionRate || 0).toFixed(1) + "%";
+
+        // Update sidebar badge
+        const badge = document.getElementById("newLeadsBadge");
+        if (stats.newLeads > 0) { badge.textContent = stats.newLeads; badge.style.display = ""; }
+        else badge.style.display = "none";
+
+        if (!leads || leads.length === 0) {
+          content.innerHTML = `<div class="leads-empty"><div class="leads-empty-icon">👥</div><p>No leads yet. Leads are captured automatically when visitors complete a booking through your chat widget.</p></div>`;
+          return;
+        }
+
+        content.innerHTML = `
+          <table class="leads-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Contact</th>
+                <th>Service</th>
+                <th>Status</th>
+                <th>Follow-ups</th>
+                <th>Next Contact</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${leads.map(lead => buildLeadRow(lead)).join("")}
+            </tbody>
+          </table>`;
+      } catch (_) {
+        content.innerHTML = `<div class="leads-empty"><div class="leads-empty-icon">⚠️</div><p>Failed to load leads. Please try again.</p></div>`;
+      }
+    }
+
+    function buildLeadRow(lead) {
+      const statusClass = `lead-status-${lead.status}`;
+      const nextDate = lead.nextFollowUpDate
+        ? new Date(lead.nextFollowUpDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+        : "—";
+      const contactBtn = lead.status !== "unsubscribed" && (lead.followUpCount || 0) < 3
+        ? `<button class="btn-xs btn-xs-blue" onclick="contactLead('${lead.id}', 'email', this)">Email</button>`
+        : "";
+      const convertBtn = lead.status !== "converted" && lead.status !== "unsubscribed"
+        ? `<button class="btn-xs btn-xs-green" onclick="markConverted('${lead.id}', this)">Converted</button>`
+        : "";
+      const unsubBtn = lead.status !== "unsubscribed"
+        ? `<button class="btn-xs btn-xs-red" onclick="unsubscribeLead('${lead.id}', this)">Unsub</button>`
+        : "";
+
+      return `
+        <tr id="lead-row-${lead.id}">
+          <td style="font-weight:600;">${esc(lead.visitorName)}</td>
+          <td style="color:var(--muted);font-family:monospace;font-size:0.79rem;">${esc(lead.visitorEmail || "—")}</td>
+          <td>${esc((lead.serviceIssue || "").substring(0, 32))}${(lead.serviceIssue || "").length > 32 ? "…" : ""}</td>
+          <td><span class="lead-status ${statusClass}">${lead.status}</span></td>
+          <td style="text-align:center;">${lead.followUpCount || 0}/3</td>
+          <td style="color:var(--muted);font-size:0.82rem;">${nextDate}</td>
+          <td><div class="lead-actions">${contactBtn}${convertBtn}${unsubBtn}</div></td>
+        </tr>`;
+    }
+
+    async function contactLead(leadId, channel, btn) {
+      if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
+      try {
+        const res = await fetch(`/api/leads/${leadId}/contact`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ channel, message_number: 1 }),
+        });
+        if (res.ok) { await loadLeads(); }
+        else {
+          const data = await res.json().catch(() => ({}));
+          alert(data.error || "Failed to send follow-up.");
+          if (btn) { btn.disabled = false; btn.textContent = "Email"; }
+        }
+      } catch (_) {
+        alert("Network error — please try again.");
+        if (btn) { btn.disabled = false; btn.textContent = "Email"; }
+      }
+    }
+
+    async function markConverted(leadId, btn) {
+      if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+      try {
+        const res = await fetch(`/api/leads/${leadId}/mark-converted`, {
+          method: "POST", credentials: "include",
+        });
+        if (res.ok) { await loadLeads(); }
+        else {
+          alert("Failed to update lead.");
+          if (btn) { btn.disabled = false; btn.textContent = "Converted"; }
+        }
+      } catch (_) {
+        alert("Network error — please try again.");
+        if (btn) { btn.disabled = false; btn.textContent = "Converted"; }
+      }
+    }
+
+    async function unsubscribeLead(leadId, btn) {
+      if (!confirm("Unsubscribe this lead? They will no longer receive follow-up emails.")) return;
+      if (btn) { btn.disabled = true; btn.textContent = "…"; }
+      try {
+        const res = await fetch(`/api/leads/${leadId}/unsubscribe`, {
+          method: "POST", credentials: "include",
+        });
+        if (res.ok) { await loadLeads(); }
+        else {
+          alert("Failed to unsubscribe lead.");
+          if (btn) { btn.disabled = false; btn.textContent = "Unsub"; }
+        }
+      } catch (_) {
+        alert("Network error — please try again.");
+        if (btn) { btn.disabled = false; btn.textContent = "Unsub"; }
+      }
     }
 
     // ── Logout ────────────────────────────────────────────────────

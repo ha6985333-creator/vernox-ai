@@ -6,6 +6,7 @@ import adminRouter from "./admin";
 import webhooksRouter from "./webhooks";
 import embedRouter from "./embed";
 import reviewsRouter from "./reviews";
+import leadsRouter from "./leads";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(embedRouter);
 router.use(webhooksRouter);
 router.use("/admin", adminRouter);
 router.use(reviewsRouter);
+router.use(leadsRouter);
 
 export default router;
