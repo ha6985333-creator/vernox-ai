@@ -1,10 +1,13 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
 import router from "./routes";
 import { logger } from "./lib/logger";
+
+const PgStore = connectPgSimple(session);
 
 const app: Express = express();
 
@@ -24,12 +27,17 @@ app.use(cors({ origin: true, credentials: true }));
 
 app.use(
   session({
+    store: new PgStore({
+      conString: process.env["DATABASE_URL"],
+      tableName: "session",
+      createTableIfMissing: false,
+    }),
     secret: process.env["SESSION_SECRET"] ?? "dev-secret-change-me",
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: process.env["NODE_ENV"] === "production",
+      secure: false,
       sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
