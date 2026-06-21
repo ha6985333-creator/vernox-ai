@@ -6,54 +6,55 @@
   <title>Sign In — Vernox AI</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       --accent: #4f46e5; --accent-dark: #3730a3;
-      --text: #111827; --muted: #6b7280;
+      --text: #1a1a1a; --muted: #6b7280;
       --border: #e5e7eb; --bg: #f9fafb;
     }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: #1a1a1a;
       min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
     }
     .card {
-      background: #fff; border-radius: 20px; padding: 40px 36px;
-      width: 100%; max-width: 420px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+      background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 36px 32px;
+      width: 100%; max-width: 400px;
     }
-    .logo { text-align: center; margin-bottom: 28px; }
+    .logo { margin-bottom: 24px; }
     .logo-icon {
-      width: 56px; height: 56px; border-radius: 14px;
+      width: 36px; height: 36px; border-radius: 6px;
       background: var(--accent); display: inline-flex; align-items: center; justify-content: center;
-      margin-bottom: 12px;
+      margin-bottom: 16px;
     }
-    .logo-icon svg { width: 28px; height: 28px; color: #fff; }
-    h1 { font-size: 1.5rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
-    .subtitle { color: var(--muted); font-size: 0.9rem; }
-    .form { margin-top: 28px; display: flex; flex-direction: column; gap: 18px; }
-    label { font-size: 0.85rem; font-weight: 600; color: var(--text); display: block; margin-bottom: 6px; }
+    .logo-icon svg { width: 20px; height: 20px; color: #fff; }
+    h1 { font-size: 1.25rem; font-weight: 700; color: var(--text); margin-bottom: 4px; letter-spacing: -0.01em; }
+    .subtitle { color: var(--muted); font-size: 0.875rem; }
+    .form { margin-top: 24px; display: flex; flex-direction: column; gap: 16px; }
+    label { font-size: 0.78rem; font-weight: 600; color: var(--text); display: block; margin-bottom: 6px; }
     input {
-      width: 100%; padding: 11px 14px; border: 1.5px solid var(--border);
-      border-radius: 10px; font-size: 0.95rem; font-family: inherit;
-      outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+      width: 100%; padding: 9px 12px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 0.875rem; font-family: inherit;
+      outline: none; transition: border-color 0.15s; color: var(--text);
     }
-    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+    input:focus { border-color: var(--accent); }
     .btn {
-      width: 100%; padding: 13px; background: var(--accent); color: #fff;
-      border: none; border-radius: 10px; font-size: 1rem; font-weight: 600;
-      cursor: pointer; transition: background 0.15s, transform 0.1s; margin-top: 4px;
+      width: 100%; padding: 10px; background: var(--accent); color: #fff;
+      border: none; border-radius: 6px; font-size: 0.875rem; font-weight: 600;
+      cursor: pointer; transition: background 0.15s; margin-top: 4px; height: 40px;
+      font-family: inherit;
     }
     .btn:hover { background: var(--accent-dark); }
-    .btn:active { transform: scale(0.98); }
-    .btn:disabled { background: #a5b4fc; cursor: default; }
+    .btn:disabled { opacity: 0.6; cursor: default; }
     .error {
       background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
-      border-radius: 8px; padding: 10px 14px; font-size: 0.85rem; display: none;
+      border-radius: 6px; padding: 10px 12px; font-size: 0.82rem; display: none;
     }
     .back { text-align: center; margin-top: 20px; }
-    .back a { color: var(--accent); text-decoration: none; font-size: 0.85rem; }
-    .back a:hover { text-decoration: underline; }
+    .back a { color: var(--muted); text-decoration: none; font-size: 0.82rem; }
+    .back a:hover { color: var(--text); }
   </style>
 </head>
 <body>

@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
@@ -13,21 +15,22 @@
   --user-text:        #ffffff;
   --ai-bg:            #f3f4f6;
   --ai-text:          #111827;
-  --shadow:           0 12px 40px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.08);
-  --radius:           18px;
-  --radius-sm:        10px;
-  --ease:             cubic-bezier(0.4,0,0.2,1);
+  --shadow:           0 2px 8px rgba(0,0,0,0.08);
+  --radius:           12px;
+  --radius-sm:        8px;
+  --ease:             ease-in-out;
 }
 
 html, body {
   height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ── Simulated background page ───────────────────────────────── */
 .page-bg {
   min-height: 100vh;
-  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
+  background: #1a1a1a;
   display: flex;
   align-items: center;
   justify-content: center;

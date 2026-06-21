@@ -1,0 +1,2 @@
+---
+- [UI Design System](ui-design-system.md) — Inter font, #1a1a1a dark sidebars/backgrounds, 6px radius, no gradients/shadows/blur, @import must be first in CSS
