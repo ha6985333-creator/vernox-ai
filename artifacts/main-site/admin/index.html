@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin Dashboard — Vernox AI</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -18,6 +18,7 @@
     .sidebar-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 36px; padding: 0 8px; }
     .sidebar-logo-icon { width: 32px; height: 32px; border-radius: 6px; background: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .sidebar-logo-icon svg { width: 18px; height: 18px; }
+    .sidebar-logo-icon img { width: 74%; height: 74%; object-fit: contain; display: block; }
     .sidebar-logo-text { font-weight: 700; font-size: 0.9rem; }
     .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 6px; color: rgba(255,255,255,0.6); cursor: pointer; transition: background 0.15s, color 0.15s; font-size: 0.875rem; margin-bottom: 2px; text-decoration: none; }
     .nav-item:hover, .nav-item.active { background: rgba(255,255,255,0.08); color: #fff; }
@@ -84,7 +85,7 @@
   <aside class="sidebar">
     <div class="sidebar-logo">
       <div class="sidebar-logo-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+        <img src="/logo.png" alt="Vernox AI" />
       </div>
       <span class="sidebar-logo-text">Admin Panel</span>
     </div>
