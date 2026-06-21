@@ -26,6 +26,13 @@ export interface PurchaseRequestInput {
   phone: string;
 }
 
+// The "from" address for all outbound email. Until a domain is verified at
+// resend.com/domains, Resend only allows the shared onboarding@resend.dev sender,
+// which can ONLY deliver to the account owner's own address. Once a domain is
+// verified, set FROM_EMAIL (e.g. "Vernox AI <hello@yourdomain.com>") to send to
+// customers — no code change required.
+const FROM_EMAIL = process.env["FROM_EMAIL"] || "onboarding@resend.dev";
+
 function getResend(): Resend | null {
   const apiKey = process.env["RESEND_API_KEY"];
   if (!apiKey) return null;
@@ -40,7 +47,7 @@ export async function sendConfirmationEmail(booking: BookingDetails): Promise<vo
   if (!to) { logger.warn("BUSINESS_EMAIL not configured — skipping booking notification"); return; }
 
   const { error } = await resend.emails.send({
-    from: "onboarding@resend.dev",
+    from: FROM_EMAIL,
     to,
     subject: `📅 New Booking: ${booking.name} — ${booking.datetime}`,
     html: `
@@ -78,7 +85,7 @@ export async function sendCredentialsEmail(input: CredentialsEmailInput): Promis
   const loginUrl = `https://${domain}/login`;
 
   const { error } = await resend.emails.send({
-    from: "onboarding@resend.dev",
+    from: FROM_EMAIL,
     to,
     subject: `Your account is ready — ${BUSINESS_NAME}`,
     html: `
@@ -111,7 +118,7 @@ export async function sendPurchaseNotification(input: PurchaseRequestInput): Pro
   if (!to) { logger.warn("BUSINESS_EMAIL/NOTIFY_EMAIL not configured — skipping purchase notification"); return; }
 
   const { error } = await resend.emails.send({
-    from: "onboarding@resend.dev",
+    from: FROM_EMAIL,
     to,
     subject: `💰 New Sale Request: ${input.businessName} (${input.name})`,
     html: `
@@ -140,7 +147,7 @@ export async function sendPurchaseConfirmation(input: PurchaseRequestInput): Pro
   if (!resend) { logger.warn("RESEND_API_KEY not set — skipping purchase confirmation"); return; }
 
   const { error } = await resend.emails.send({
-    from: "onboarding@resend.dev",
+    from: FROM_EMAIL,
     to: input.email,
     subject: `Thanks for choosing ${BUSINESS_NAME}`,
     html: `
@@ -217,7 +224,7 @@ export async function sendLeadFollowUp(lead: Lead, messageNumber: number): Promi
   if (!template) throw new Error(`No template for message_number ${messageNumber}`);
 
   const { error } = await resend.emails.send({
-    from: "onboarding@resend.dev",
+    from: FROM_EMAIL,
     to: lead.visitorEmail,
     subject: template.subject(lead.visitorName, BUSINESS_NAME),
     html: template.body(lead.visitorName, lead.serviceIssue, BUSINESS_NAME),
