@@ -1,3 +1,4 @@
 ---
 - [UI Design System](ui-design-system.md) — Inter font, #1a1a1a dark sidebars/backgrounds, 6px radius, no gradients/shadows/blur, @import must be first in CSS
 - [Session cookies in iframe](session-cookies-iframe.md) — Replit preview is an iframe; session cookies need SameSite=None + Secure=true or /auth/me 401s after login
+- [Admin table XSS guard](admin-table-xss.md) — admin dashboards render user-supplied fields; esc() only escapes &<> so build DOM nodes w/ textContent, never innerHTML attrs/handlers

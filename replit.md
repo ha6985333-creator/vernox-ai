@@ -46,7 +46,7 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 | URL | Description |
 |---|---|
 | `/` | Chat widget (main product) |
-| `/buy` | "Buy Now" thank-you page — explains user will be contacted with payment link, then login credentials |
+| `/buy` | "Buy Now" page — lead capture form (name/business/email/phone) → on submit reveals thank-you steps; team contacts buyer with payment link, then credentials |
 | `/login` | Login page for admin + tenants |
 | `/admin` | Master admin dashboard (admin only) |
 | `/portal` | Tenant landing page after login |
@@ -58,17 +58,21 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 | POST | `/api/auth/login` | public | Login |
 | POST | `/api/auth/logout` | session | Logout |
 | GET | `/api/auth/me` | session | Current user |
+| POST | `/api/buy` | public | Submit Buy Now lead — saves `purchase_requests` row, emails owner + customer (rate-limited 5/hr per IP) |
 | GET | `/api/admin/tenants` | admin | List all tenants |
 | POST | `/api/admin/tenants` | admin | Manually create tenant |
 | PATCH | `/api/admin/tenants/:id/status` | admin | Suspend/activate |
 | GET | `/api/admin/stats` | admin | Stats counters |
+| GET | `/api/admin/purchase-requests` | admin | List all sale requests |
+| PATCH | `/api/admin/purchase-requests/:id/status` | admin | Set status (new/contacted/paid/closed) |
 | POST | `/api/webhooks/payoneer` | public | Payoneer IPN (auto-provision) |
 
 ## Product
 
 - **Chat widget**: AI-powered lead qualification + appointment booking for any business type (currently configured as "plumber"). Change `BUSINESS_TYPE` and `SYSTEM_PROMPT` in `config.ts` to switch industries.
 - **Booking detection**: When AI detects a completed booking it emits `BOOKING_COMPLETE::{}`, triggering a green confirmation banner and sending a notification email.
-- **Admin dashboard**: Master admin can view all customers, create accounts manually, suspend/activate tenants.
+- **Admin dashboard**: Master admin can view all customers, create accounts manually, suspend/activate tenants, and review/triage incoming sale requests.
+- **Sale notifications**: The `/buy` form POSTs to `/api/buy` → saves a `purchase_requests` row, emails the owner (NOTIFY_EMAIL) a notification, and emails the customer a confirmation. Each request shows in the admin "Sale Requests" table with a status dropdown (new/contacted/paid/closed) and a "New Sale Requests" stat card.
 - **Auto-provisioning**: Payoneer IPN webhook at `/api/webhooks/payoneer` — when a payment completes, a tenant account is created and credentials are emailed automatically.
 
 ## Architecture decisions
@@ -91,3 +95,4 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 - bcrypt requires native build approval: `pnpm approve-builds`
 - Stripe package is installed but not used (replaced by Payoneer) — safe to leave or remove
 - Static pages at `/admin` and `/portal` are SPA-style: JS checks `/api/auth/me` and redirects to `/login` if unauthenticated
+- Resend with no verified domain (from `onboarding@resend.dev`) can ONLY send to the account owner's own address (ha6985333@gmail.com). So owner sale-notification emails work, but customer confirmation emails to other addresses fail with a 403 (caught + logged, doesn't break the request). To enable customer emails, verify a domain at resend.com/domains and update the `from` address in `lib/email.ts`.

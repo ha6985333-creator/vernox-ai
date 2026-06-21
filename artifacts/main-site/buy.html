@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Thank You — Vernox AI</title>
+  <title>Get Started — Vernox AI</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -21,23 +21,54 @@
     }
     .card {
       background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 40px 36px;
-      width: 100%; max-width: 460px; text-align: center;
+      width: 100%; max-width: 460px;
     }
+    .head { text-align: center; margin-bottom: 26px; }
+    .badge {
+      display: inline-block; background: #eef2ff; color: var(--accent);
+      font-size: 0.72rem; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+      letter-spacing: 0.03em; margin-bottom: 14px;
+    }
+    h1 { font-size: 1.4rem; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.01em; }
+    .lead { color: var(--muted); font-size: 0.92rem; line-height: 1.55; }
+    .price { color: var(--text); font-weight: 600; }
+    .form { margin-top: 8px; display: flex; flex-direction: column; gap: 15px; }
+    label { font-size: 0.78rem; font-weight: 600; color: var(--text); display: block; margin-bottom: 6px; }
+    input {
+      width: 100%; padding: 9px 12px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 0.875rem; font-family: inherit;
+      outline: none; transition: border-color 0.15s; color: var(--text);
+    }
+    input:focus { border-color: var(--accent); }
+    .btn {
+      width: 100%; padding: 10px; background: var(--accent); color: #fff;
+      border: none; border-radius: 6px; font-size: 0.9rem; font-weight: 600;
+      cursor: pointer; transition: background 0.15s; margin-top: 4px; height: 42px;
+      font-family: inherit;
+    }
+    .btn:hover { background: var(--accent-dark); }
+    .btn:disabled { opacity: 0.6; cursor: default; }
+    .error {
+      background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
+      border-radius: 6px; padding: 10px 12px; font-size: 0.82rem; display: none;
+    }
+    .back { text-align: center; margin-top: 22px; }
+    .back a { color: var(--muted); text-decoration: none; font-size: 0.82rem; }
+    .back a:hover { color: var(--text); }
+
+    /* Success state */
+    #success { display: none; text-align: center; }
     .check {
       width: 56px; height: 56px; border-radius: 50%;
       background: #ecfdf5; display: inline-flex; align-items: center; justify-content: center;
       margin-bottom: 22px;
     }
     .check svg { width: 28px; height: 28px; color: #059669; }
-    h1 { font-size: 1.4rem; font-weight: 700; color: var(--text); margin-bottom: 10px; letter-spacing: -0.01em; }
-    .lead { color: var(--muted); font-size: 0.95rem; line-height: 1.6; }
     .steps {
       text-align: left; margin: 28px 0 8px; border: 1px solid var(--border);
       border-radius: 8px; overflow: hidden;
     }
-    .step {
-      display: flex; gap: 14px; padding: 16px 18px; align-items: flex-start;
-    }
+    .step { display: flex; gap: 14px; padding: 16px 18px; align-items: flex-start; }
     .step + .step { border-top: 1px solid var(--border); }
     .step-num {
       flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
@@ -46,52 +77,127 @@
     }
     .step-body h3 { font-size: 0.9rem; font-weight: 600; color: var(--text); margin-bottom: 2px; }
     .step-body p { font-size: 0.83rem; color: var(--muted); line-height: 1.5; }
-    .note {
-      margin-top: 22px; font-size: 0.83rem; color: var(--muted); line-height: 1.6;
-    }
+    .note { margin-top: 22px; font-size: 0.83rem; color: var(--muted); line-height: 1.6; }
     .note strong { color: var(--text); }
-    .back { margin-top: 26px; }
-    .back a { color: var(--muted); text-decoration: none; font-size: 0.82rem; }
-    .back a:hover { color: var(--text); }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="check">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="20 6 9 17 4 12"/>
-      </svg>
-    </div>
-    <h1>Thanks for choosing Vernox AI</h1>
-    <p class="lead">We've received your request. Here's what happens next.</p>
-
-    <div class="steps">
-      <div class="step">
-        <span class="step-num">1</span>
-        <div class="step-body">
-          <h3>You'll get your payment link</h3>
-          <p>Our team will contact you shortly with a secure link to complete your $899/month subscription.</p>
-        </div>
+    <!-- ── FORM ─────────────────────────────────────────────── -->
+    <div id="formView">
+      <div class="head">
+        <span class="badge">$899 / month · no setup fee</span>
+        <h1>Get started with Vernox AI</h1>
+        <p class="lead">Tell us a bit about you and we'll send your secure payment link, followed by your login credentials.</p>
       </div>
-      <div class="step">
-        <span class="step-num">2</span>
-        <div class="step-body">
-          <h3>Your login credentials arrive</h3>
-          <p>Once payment is confirmed, we'll email your account email and password so you can sign in to your dashboard.</p>
+      <div class="error" id="error"></div>
+      <form class="form" id="buyForm">
+        <div>
+          <label for="name">Your name</label>
+          <input type="text" id="name" name="name" placeholder="Jane Smith" autocomplete="name" required />
         </div>
-      </div>
-      <div class="step">
-        <span class="step-num">3</span>
-        <div class="step-body">
-          <h3>We set up your AI assistant</h3>
-          <p>Full onboarding is included — your chat widget will be live and qualifying leads in no time.</p>
+        <div>
+          <label for="businessName">Business name</label>
+          <input type="text" id="businessName" name="businessName" placeholder="Smith Plumbing Co." autocomplete="organization" required />
         </div>
-      </div>
+        <div>
+          <label for="email">Email address</label>
+          <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" required />
+        </div>
+        <div>
+          <label for="phone">Phone number</label>
+          <input type="tel" id="phone" name="phone" placeholder="+1 555 123 4567" autocomplete="tel" required />
+        </div>
+        <button class="btn" type="submit" id="submitBtn">Request my payment link</button>
+      </form>
+      <div class="back"><a href="/">← Back to home</a></div>
     </div>
 
-    <p class="note">Questions in the meantime? Email us at <strong>ha6985333@gmail.com</strong>.</p>
+    <!-- ── SUCCESS ──────────────────────────────────────────── -->
+    <div id="success">
+      <div class="check">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </div>
+      <h1>Thanks for choosing Vernox AI</h1>
+      <p class="lead">We've received your request. Here's what happens next.</p>
 
-    <div class="back"><a href="/">← Back to home</a></div>
+      <div class="steps">
+        <div class="step">
+          <span class="step-num">1</span>
+          <div class="step-body">
+            <h3>You'll get your payment link</h3>
+            <p>Our team will contact you shortly with a secure link to complete your $899/month subscription.</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-num">2</span>
+          <div class="step-body">
+            <h3>Your login credentials arrive</h3>
+            <p>Once payment is confirmed, we'll email your account email and password so you can sign in to your dashboard.</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-num">3</span>
+          <div class="step-body">
+            <h3>We set up your AI assistant</h3>
+            <p>Full onboarding is included — your chat widget will be live and qualifying leads in no time.</p>
+          </div>
+        </div>
+      </div>
+
+      <p class="note">A confirmation email is on its way. Questions? Email us at <strong>ha6985333@gmail.com</strong>.</p>
+      <div class="back"><a href="/">← Back to home</a></div>
+    </div>
   </div>
+
+  <script>
+    const form = document.getElementById("buyForm");
+    const errorEl = document.getElementById("error");
+    const submitBtn = document.getElementById("submitBtn");
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.style.display = "block";
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Request my payment link";
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorEl.style.display = "none";
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Sending…";
+
+      const payload = {
+        name: document.getElementById("name").value.trim(),
+        businessName: document.getElementById("businessName").value.trim(),
+        email: document.getElementById("email").value.trim(),
+        phone: document.getElementById("phone").value.trim(),
+      };
+
+      try {
+        const res = await fetch("/api/buy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          document.getElementById("formView").style.display = "none";
+          document.getElementById("success").style.display = "block";
+          window.scrollTo(0, 0);
+          return;
+        }
+
+        let msg = "Something went wrong. Please try again.";
+        try { const data = await res.json(); if (data.error) msg = data.error; } catch (_) {}
+        showError(msg);
+      } catch (_) {
+        showError("Unable to connect. Please check your internet connection and try again.");
+      }
+    });
+  </script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { tenantsTable, usersTable } from "@workspace/db";
+import { tenantsTable, usersTable, purchaseRequestsTable } from "@workspace/db";
 import { desc, count } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth.js";
 import { createTenantWithCredentials } from "../lib/accounts.js";
@@ -25,6 +25,23 @@ router.get("/stats", async (req, res) => {
 router.get("/tenants", async (_req, res) => {
   const tenants = await db.select().from(tenantsTable).orderBy(desc(tenantsTable.createdAt));
   res.json(tenants);
+});
+
+router.get("/purchase-requests", async (_req, res) => {
+  const requests = await db.select().from(purchaseRequestsTable).orderBy(desc(purchaseRequestsTable.createdAt));
+  res.json(requests);
+});
+
+router.patch("/purchase-requests/:id/status", async (req, res) => {
+  const { eq } = await import("drizzle-orm");
+  const { status } = req.body as { status?: string };
+  const allowed = ["new", "contacted", "paid", "closed"];
+  if (!status || !allowed.includes(status)) {
+    res.status(400).json({ error: `status must be one of: ${allowed.join(", ")}` });
+    return;
+  }
+  await db.update(purchaseRequestsTable).set({ status }).where(eq(purchaseRequestsTable.id, req.params.id!));
+  res.json({ ok: true });
 });
 
 router.get("/tenants/:id", async (req, res) => {

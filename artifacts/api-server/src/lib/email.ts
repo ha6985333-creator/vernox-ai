@@ -19,6 +19,13 @@ export interface CredentialsEmailInput {
   plan: string;
 }
 
+export interface PurchaseRequestInput {
+  name: string;
+  email: string;
+  businessName: string;
+  phone: string;
+}
+
 function getResend(): Resend | null {
   const apiKey = process.env["RESEND_API_KEY"];
   if (!apiKey) return null;
@@ -94,6 +101,67 @@ export async function sendCredentialsEmail(input: CredentialsEmailInput): Promis
 
   if (error) logger.error({ error }, "Failed to send credentials email");
   else logger.info({ to }, "Credentials email sent");
+}
+
+export async function sendPurchaseNotification(input: PurchaseRequestInput): Promise<void> {
+  const resend = getResend();
+  if (!resend) { logger.warn("RESEND_API_KEY not set — skipping purchase notification"); return; }
+
+  const to = BUSINESS_EMAIL;
+  if (!to) { logger.warn("BUSINESS_EMAIL/NOTIFY_EMAIL not configured — skipping purchase notification"); return; }
+
+  const { error } = await resend.emails.send({
+    from: "onboarding@resend.dev",
+    to,
+    subject: `💰 New Sale Request: ${input.businessName} (${input.name})`,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#f9fafb;border-radius:12px;">
+        <div style="background:#059669;border-radius:8px;padding:24px;text-align:center;margin-bottom:24px;">
+          <h1 style="color:#fff;margin:0;font-size:1.5rem;">New Sale Request</h1>
+          <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:0.9rem;">Someone clicked Buy Now on ${BUSINESS_NAME}</p>
+        </div>
+        <p style="color:#374151;">Send them a payment link, then their login credentials once paid.</p>
+        <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;width:40%;">Name</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${input.name}</td></tr>
+          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Business</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${input.businessName}</td></tr>
+          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Email</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;"><a href="mailto:${input.email}" style="color:#4f46e5;">${input.email}</a></td></tr>
+          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Phone</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;"><a href="tel:${input.phone}" style="color:#4f46e5;">${input.phone}</a></td></tr>
+        </table>
+        <p style="color:#6b7280;font-size:0.85rem;">— ${BUSINESS_NAME} website</p>
+      </div>`,
+  });
+
+  if (error) logger.error({ error }, "Failed to send purchase notification email");
+  else logger.info({ to }, "Purchase notification sent to business owner");
+}
+
+export async function sendPurchaseConfirmation(input: PurchaseRequestInput): Promise<void> {
+  const resend = getResend();
+  if (!resend) { logger.warn("RESEND_API_KEY not set — skipping purchase confirmation"); return; }
+
+  const { error } = await resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: input.email,
+    subject: `Thanks for choosing ${BUSINESS_NAME}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#f9fafb;border-radius:12px;">
+        <div style="background:#4f46e5;border-radius:8px;padding:24px;text-align:center;margin-bottom:24px;">
+          <h1 style="color:#fff;margin:0;font-size:1.5rem;">Thanks, ${input.name}!</h1>
+          <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:0.9rem;">${BUSINESS_NAME}</p>
+        </div>
+        <p style="color:#374151;">We've received your request to get started for <strong>${input.businessName}</strong>. Here's what happens next:</p>
+        <ol style="color:#374151;line-height:1.7;padding-left:20px;margin:16px 0;">
+          <li>Our team will contact you shortly with a secure link to complete your <strong>$899/month</strong> subscription.</li>
+          <li>Once payment is confirmed, we'll email your login credentials so you can sign in to your dashboard.</li>
+          <li>We handle full onboarding — your AI assistant will be live and qualifying leads in no time.</li>
+        </ol>
+        <p style="color:#6b7280;font-size:0.85rem;margin-top:16px;">Questions in the meantime? Just reply to this email.</p>
+        <p style="color:#6b7280;font-size:0.85rem;">— The ${BUSINESS_NAME} Team</p>
+      </div>`,
+  });
+
+  if (error) logger.error({ error }, "Failed to send purchase confirmation email");
+  else logger.info({ to: input.email }, "Purchase confirmation sent to customer");
 }
 
 const FOLLOW_UP_TEMPLATES = [

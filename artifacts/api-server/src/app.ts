@@ -57,6 +57,17 @@ const chatLimiter = rateLimit({
 });
 app.use("/api/chat", chatLimiter);
 
+// Rate limit the public Buy Now endpoint — 5 submissions/hour per IP.
+// It triggers outbound email, so guard against spam/cost amplification.
+const buyLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please try again later." },
+});
+app.use("/api/buy", buyLimiter);
+
 app.use("/api", router);
 
 export default app;
