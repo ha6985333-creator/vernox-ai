@@ -34,7 +34,13 @@ router.post("/auth/login", async (req, res) => {
   req.session.role = user.role;
   req.session.email = user.email;
 
-  res.json({ role: user.role, email: user.email });
+  req.session.save((err) => {
+    if (err) {
+      res.status(500).json({ error: "Session error" });
+      return;
+    }
+    res.json({ role: user.role, email: user.email });
+  });
 });
 
 router.post("/auth/logout", (req, res) => {

@@ -1,0 +1,129 @@
+PROJECT: Vernox AI — Fix Admin Login Redirect Loop
+
+PROBLEM:
+Admin enters credentials → login processes → redirects back to login page instead of /admin dashboard
+User is stuck in infinite login loop
+
+DIAGNOSIS & FIX:
+
+ISSUE 1: Check session persistence
+File: artifacts/api-server/src/routes/auth.ts, POST /api/auth/login
+
+Current code likely has:
+- User found ✓
+- Password verified ✓
+- BUT req.session.userId not set OR set incorrectly
+
+Fix:
+After password verification succeeds:
+req.session.userId = user.id;
+req.session.role = user.role;      // CRITICAL: must be set
+req.session.email = user.email;
+req.session.save((err) => {
+  if (err) {
+    console.error("Session save failed:", err);
+    return res.status(500).json({ error: "Session error" });
+  }
+  res.json({ role: user.role, email: user.email });
+});
+
+ISSUE 2: Check login.html redirect logic
+File: artifacts/main-site/login.html
+
+Current code likely has generic redirect. Fix it to:
+
+fetch("POST /api/auth/login", { ... })
+  .then(response => response.json())
+  .then(data => {
+    if (data.role === "admin") {
+      window.location.href = "/admin";  // Go to admin dashboard
+    } else if (data.role === "tenant") {
+      window.location.href = "/portal";  // Go to tenant portal
+    }
+  })
+  .catch(error => {
+    // Show error
+    document.getElementById("errorMsg").textContent = error.message;
+  });
+
+ISSUE 3: Check session middleware in app.ts
+File: artifacts/api-server/src/app.ts
+
+Verify session middleware is configured BEFORE routes:
+
+app.use(session({
+  secret: process.env.SESSION_SECRET ?? "dev-secret-change-me",
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000  // 7 days
+  }
+}));
+
+ISSUE 4: Check requireAuth middleware
+File: artifacts/api-server/src/routes/admin.ts
+
+All admin routes should verify session:
+
+function requireAdmin(req, res, next) {
+  if (!req.session || !req.session.userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (req.session.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  next();
+}
+
+Apply to ALL /api/admin/* routes:
+router.get("/stats", requireAdmin, getStats);
+router.get("/tenants", requireAdmin, getTenants);
+// etc.
+
+ISSUE 5: Check frontend auth check in admin/index.html
+File: artifacts/main-site/admin/index.html
+
+On page load, verify the user is actually admin:
+
+window.addEventListener("DOMContentLoaded", async () => {
+  const response = await fetch("/api/auth/me", { credentials: "include" });
+  if (!response.ok || response.status === 401) {
+    window.location.href = "/login";
+    return;
+  }
+  const user = await response.json();
+  if (user.role !== "admin") {
+    window.location.href = "/login";
+    return;
+  }
+  // User is admin, load dashboard
+  loadAdminDashboard();
+});
+
+COMPLETE FIX CHECKLIST:
+1. ✅ Session saved after login with userId, role, email
+2. ✅ Login redirect checks role and goes to /admin or /portal
+3. ✅ /api/auth/me endpoint exists and returns { userId, role, email }
+4. ✅ /api/admin/* routes all have requireAdmin middleware
+5. ✅ admin/index.html checks user.role === "admin" on page load
+6. ✅ Logout clears session with req.session.destroy()
+
+TEST:
+1. Clear all cookies (DevTools → Application → Cookies, delete connect.sid)
+2. Go to /login
+3. Enter admin credentials
+4. Should redirect to /admin
+5. Admin dashboard should load with stats
+6. Refresh page — should stay on /admin (session persists)
+7. Logout — should go back to /login
+8. Try to go directly to /admin without logging in — should redirect to /login
+
+OUTPUT:
+1. Fixed artifacts/api-server/src/routes/auth.ts (POST /api/auth/login with session.save)
+2. Fixed artifacts/main-site/login.html (role-based redirect)
+3. Fixed artifacts/main-site/admin/index.html (auth check on page load)
+4. Verified requireAdmin middleware in all /api/admin/* routes
+5. Verified session middleware in app.ts is in correct order
