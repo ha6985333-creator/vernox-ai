@@ -304,6 +304,39 @@
             </button>
           </div>
         </div>
+        <!-- ── Review Analytics ─────────────────────────────── -->
+        <div id="review-analytics" style="display:none">
+          <div class="leads-stats-grid" style="margin-bottom:16px">
+            <div class="leads-stat-card">
+              <div class="leads-stat-label">Total Reviews</div>
+              <div class="leads-stat-value" id="totalReviewsCount">—</div>
+            </div>
+            <div class="leads-stat-card">
+              <div class="leads-stat-label">Average Rating</div>
+              <div class="leads-stat-value" id="averageRatingValue">—</div>
+            </div>
+            <div class="leads-stat-card">
+              <div class="leads-stat-label">Failed Analysis</div>
+              <div class="leads-stat-value" id="pendingAnalysisCount">—</div>
+              <div style="font-size:0.7rem;color:var(--muted);margin-top:2px">awaiting auto-retry</div>
+            </div>
+            <div class="leads-stat-card">
+              <div class="leads-stat-label">Awaiting Approval</div>
+              <div class="leads-stat-value" id="pendingApprovalCount">—</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+            <div class="card" style="padding:16px">
+              <div style="font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Reviews by Source</div>
+              <div id="reviewSourcesBreakdown" style="font-size:0.88rem;color:var(--text)">—</div>
+            </div>
+            <div class="card" style="padding:16px">
+              <div style="font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Sentiment Breakdown</div>
+              <div id="sentimentBreakdown" style="font-size:0.88rem;color:var(--text)">—</div>
+            </div>
+          </div>
+          <div id="analyticsFailureWarning" style="display:none;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px 16px;font-size:0.85rem;color:#92400e;margin-bottom:16px"></div>
+        </div>
         <div id="reviewsContainer"></div>
       </div>
 
@@ -433,7 +466,7 @@
       el.classList.add("active");
       document.getElementById("topbarTitle").textContent = tabTitles[tab] || tab;
       location.hash = tab;
-      if (tab === "reviews") loadReviews();
+      if (tab === "reviews") { loadReviewAnalytics(); loadReviews(); }
       if (tab === "leads") loadLeads();
     }
 
@@ -496,6 +529,54 @@
           </button>
           <p class="connect-disclaimer">A real OAuth flow will be added when your Google API credentials are configured.</p>
         </div>`;
+    }
+
+    // ── Review Analytics ─────────────────────────────────────────
+    async function loadReviewAnalytics() {
+      const analyticsEl = document.getElementById("review-analytics");
+      const res = await fetch("/api/reviews/analytics", { credentials: "include" });
+      if (!res.ok) return; // silent fail — unauthenticated or network error
+      const a = await res.json();
+
+      // Show the analytics panel (hidden until first load)
+      analyticsEl.style.display = "";
+
+      document.getElementById("totalReviewsCount").textContent = a.totalReviews;
+      document.getElementById("averageRatingValue").textContent =
+        a.totalReviews > 0 ? a.averageRating.toFixed(1) + "★" : "—";
+      document.getElementById("pendingAnalysisCount").textContent = a.analysisStatus.failed ?? 0;
+      document.getElementById("pendingApprovalCount").textContent = a.pendingApproval ?? 0;
+
+      // Sources breakdown
+      const srcEntries = Object.entries(a.reviewsBySource || {});
+      document.getElementById("reviewSourcesBreakdown").innerHTML = srcEntries.length
+        ? srcEntries.map(([src, cnt]) =>
+            `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">
+               <span style="text-transform:capitalize">${esc(src)}</span>
+               <strong>${cnt}</strong>
+             </div>`).join("")
+        : '<span style="color:var(--muted)">No data yet</span>';
+
+      // Sentiment breakdown
+      const sentColors = { positive: "#16a34a", neutral: "#6b7280", negative: "#dc2626" };
+      const sentIcons  = { positive: "😊", neutral: "😐", negative: "😞" };
+      const sentEntries = Object.entries(a.reviewsBySentiment || {});
+      document.getElementById("sentimentBreakdown").innerHTML = sentEntries.length
+        ? sentEntries.map(([sent, cnt]) =>
+            `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">
+               <span style="color:${sentColors[sent]||"inherit"}">${sentIcons[sent]||""} ${sent.charAt(0).toUpperCase()+sent.slice(1)}</span>
+               <strong>${cnt}</strong>
+             </div>`).join("")
+        : '<span style="color:var(--muted)">No data yet</span>';
+
+      // Failure warning
+      const warnEl = document.getElementById("analyticsFailureWarning");
+      if (a.recentFailures && a.recentFailures.length > 0) {
+        warnEl.style.display = "";
+        warnEl.innerHTML = `⚠️ ${a.recentFailures.length} review(s) failed AI analysis — we'll retry automatically within the hour. <a href="#" onclick="loadReviews();return false;" style="color:#92400e;font-weight:600">View reviews</a>`;
+      } else {
+        warnEl.style.display = "none";
+      }
     }
 
     // ── Load reviews ──────────────────────────────────────────────

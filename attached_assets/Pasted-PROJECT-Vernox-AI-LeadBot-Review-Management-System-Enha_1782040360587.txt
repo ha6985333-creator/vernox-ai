@@ -1,0 +1,188 @@
+PROJECT: Vernox AI LeadBot — Review Management System Enhancement
+
+SCOPE: Improve review capture, analysis, and error handling. Prepare for real Google Business Profile integration.
+
+CURRENT STATE:
+- File: artifacts/api-server/src/routes/reviews.ts
+- Schema: lib/db/src/schema/reviews.ts
+- Frontend: artifacts/main-site/portal/index.html (review management tab)
+
+ISSUES TO FIX:
+1. Review seeding uses 6 hardcoded mock reviews — should support real Google sync (prep work)
+2. Groq analysis errors are silently caught — no logging or user feedback
+3. "Approve & Publish to Google" only sets DB flag, doesn't post to Google
+4. No analytics: which reviews are analyzed, which failed, which are pending
+5. Frontend shows mock Google connection ("Connect Google Business Profile" is a 2-second setTimeout)
+6. No bulk actions (e.g., approve all pending, regenerate all)
+7. No review source tracking — all marked as "google" even if imported from elsewhere
+
+TASK 1: UPDATE DATABASE SCHEMA
+In lib/db/src/schema/reviews.ts, add these columns:
+
+ALTER TABLE reviews ADD COLUMN (
+  source TEXT NOT NULL DEFAULT 'google',        -- 'google' | 'yelp' | 'trustpilot' | 'facebook'
+  groq_call_status TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'success' | 'failed'
+  groq_error_message TEXT,                      -- null if success, else error details
+  last_groq_attempt_at TIMESTAMP,
+  groq_retry_count INTEGER DEFAULT 0,
+  google_reply_posted_at TIMESTAMP,             -- null if not posted yet
+  google_reply_post_status TEXT DEFAULT 'draft' -- 'draft' | 'posted' | 'failed'
+);
+
+TASK 2: BACKEND — BETTER ERROR HANDLING
+In artifacts/api-server/src/routes/reviews.ts:
+
+When calling analyzeReview(review):
+- Wrap in try-catch
+- On Groq success:
+  - Set groq_call_status = 'success'
+  - Clear groq_error_message
+  - Update last_groq_attempt_at = now
+  - Reset groq_retry_count = 0
+- On Groq failure (timeout, rate limit, API error):
+  - Set groq_call_status = 'failed'
+  - Log full error: logger.error({ error, reviewId, tenantId })
+  - Set groq_error_message = error.message (first 500 chars)
+  - Increment groq_retry_count
+  - Return 502 with user-friendly message: "Analysis failed. We'll retry in 1 hour."
+  - Do NOT silently swallow errors with .catch(() => {})
+
+POST /api/reviews/:id/regenerate
+- Check if groq_retry_count >= 3 and last_groq_attempt_at < 1 hour ago
+- If so, return 429: "Too many retries. Please try again in 1 hour."
+- Otherwise, proceed with analysis
+
+Add scheduled background job (pseudocode in comments):
+// Every 1 hour, find reviews WHERE groq_call_status = 'failed' AND groq_retry_count < 3 AND last_groq_attempt_at < 1h ago
+// Retry analyzeReview() for each
+// This should be triggered by a cron job or scheduled task (outside of request-response cycle)
+
+TASK 3: BACKEND — REVIEW ANALYTICS
+Add new route:
+
+GET /api/reviews/analytics
+- Auth required, tenant isolation
+- Return:
+{
+  totalReviews: number,
+  reviewsBySource: { google: count, yelp: count, ... },
+  analysisStatus: { 
+    pending: count,
+    success: count,
+    failed: count
+  },
+  reviewsBySentiment: {
+    positive: count,
+    neutral: count,
+    negative: count
+  },
+  pendingApproval: count,
+  averageRating: number,
+  recentFailures: [{ id, review_text (first 100 chars), groq_error_message, last_groq_attempt_at }]
+}
+
+TASK 4: FRONTEND — ANALYTICS DASHBOARD
+In artifacts/main-site/portal/index.html, update the review management tab:
+
+Add a new section at the top of the reviews tab:
+<div id="review-analytics">
+  <h3>Review Analytics</h3>
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Reviews</div>
+      <div class="stat-value" id="totalReviewsCount">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Average Rating</div>
+      <div class="stat-value" id="averageRatingValue">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Pending Analysis</div>
+      <div class="stat-value" id="pendingAnalysisCount">0</div>
+      <div class="stat-subtext">(Analysis failed, awaiting retry)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Awaiting Approval</div>
+      <div class="stat-value" id="pendingApprovalCount">0</div>
+    </div>
+  </div>
+
+  <div class="review-sources">
+    <h4>Reviews by Source</h4>
+    <div id="reviewSourcesBreakdown"><!-- populated by JS --></div>
+  </div>
+
+  <div class="review-sentiment">
+    <h4>Sentiment Breakdown</h4>
+    <div id="sentimentBreakdown"><!-- populated by JS --></div>
+  </div>
+</div>
+
+TASK 5: FRONTEND JAVASCRIPT
+In portal/index.html app.js:
+
+const loadReviewAnalytics = async () => {
+  const response = await fetch("/api/reviews/analytics", { credentials: "include" });
+  if (!response.ok) return; // silent fail, show cached data
+  const analytics = await response.json();
+  
+  document.getElementById("totalReviewsCount").textContent = analytics.totalReviews;
+  document.getElementById("averageRatingValue").textContent = analytics.averageRating.toFixed(1) + "★";
+  document.getElementById("pendingAnalysisCount").textContent = analytics.analysisStatus.failed;
+  document.getElementById("pendingApprovalCount").textContent = analytics.pendingApproval;
+  
+  // Sources breakdown
+  const sourcesList = Object.entries(analytics.reviewsBySource)
+    .map(([source, count]) => `<div>${source}: ${count}</div>`)
+    .join("");
+  document.getElementById("reviewSourcesBreakdown").innerHTML = sourcesList;
+  
+  // Sentiment breakdown
+  const sentimentList = Object.entries(analytics.reviewsBySentiment)
+    .map(([sentiment, count]) => `<div>${sentiment}: ${count}</div>`)
+    .join("");
+  document.getElementById("sentimentBreakdown").innerHTML = sentimentList;
+  
+  // Show failed analyses warning if any
+  if (analytics.recentFailures.length > 0) {
+    const warning = `<div class="warning">⚠️ ${analytics.recentFailures.length} review(s) failed analysis. Check back soon — we'll retry automatically.</div>`;
+    document.getElementById("review-analytics").insertAdjacentHTML("beforeend", warning);
+  }
+};
+
+// Call on tab load
+window.addEventListener("hashchange", () => {
+  if (location.hash === "#reviews") { loadReviewAnalytics(); loadReviews(); }
+});
+
+TASK 6: PREP FOR REAL GOOGLE INTEGRATION
+Add comment stubs in the code for future Google Business Profile OAuth:
+
+// TODO: Real Google OAuth Flow
+// 1. User clicks "Connect Google Business Profile"
+// 2. Redirect to Google OAuth consent screen
+// 3. Exchange auth code for refresh token
+// 4. Store refresh token in tenants table (encrypted)
+// 5. Use token to fetch reviews from Google My Business API
+// 6. Import reviews into reviews table with source = 'google'
+
+// TODO: Real Google Reply Posting
+// When "Approve & Publish" is clicked:
+// 1. Check if google_reply_post_status !== 'posted'
+// 2. Call Google Business Profile API: POST /locations/{locationId}/reviews/{reviewId}/reply
+// 3. Set google_reply_posted_at = now, google_reply_post_status = 'posted'
+// 4. Handle Google API errors (location not found, review not found, rate limit)
+
+SECURITY REQUIREMENTS:
+1. Groq errors logged with full stack, but never exposed in API response
+2. Review source validated on insert: must be one of 'google' | 'yelp' | 'trustpilot' | 'facebook'
+3. Tenant isolation on all analytics queries
+4. No sensitive customer data in error messages returned to frontend
+
+OUTPUT:
+1. Updated schema with new columns (SQL ALTER TABLE statements)
+2. Enhanced artifacts/api-server/src/routes/reviews.ts with error handling + analytics
+3. New GET /api/reviews/analytics route
+4. Updated frontend HTML + JavaScript for review analytics dashboard
+5. Comment stubs for real Google OAuth flow
+6. Logging strategy for failed Groq calls
