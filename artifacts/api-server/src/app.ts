@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import cors from "cors";
 import session from "express-session";
 import pinoHttp from "pino-http";
+import rateLimit from "express-rate-limit";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
@@ -36,6 +37,16 @@ app.use(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Rate limit the chat endpoint — 10 messages/minute per IP
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many messages. Please wait a moment and try again." },
+});
+app.use("/api/chat", chatLimiter);
 
 app.use("/api", router);
 

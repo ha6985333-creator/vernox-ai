@@ -17,6 +17,24 @@
   let messages  = [];
   let typingEl  = null;
 
+  // ── Conversation timeout (30 min inactivity) ──────────────────
+  let lastActivityTime = Date.now();
+  const CONVERSATION_TIMEOUT = 30 * 60 * 1000;
+
+  const resetActivity = () => { lastActivityTime = Date.now(); };
+  document.addEventListener("mousemove", resetActivity, { passive: true });
+  document.addEventListener("keypress",  resetActivity, { passive: true });
+
+  setInterval(() => {
+    if (messages.length === 0) return;
+    if (Date.now() - lastActivityTime > CONVERSATION_TIMEOUT) {
+      messages = [];
+      appendMessage("ai", "Your session has timed out after 30 minutes. Please refresh to start a new conversation.");
+      userInput.disabled = true;
+      sendBtn.disabled   = true;
+    }
+  }, 60_000);
+
   // ── Open / close ──────────────────────────────────────────────
   function openChat() {
     chatWindow.classList.remove("hidden");
@@ -74,6 +92,7 @@
     const text = userInput.value.trim();
     if (!text) return;
 
+    resetActivity();
     userInput.value = "";
     autoResize();
     messages.push({ role: "user", content: text });
@@ -83,30 +102,54 @@
     sendBtn.disabled = true;
     showTyping();
 
+    let status = 0;
+
     try {
       const body = { messages };
       if (widgetTenantId) body.tenantId = widgetTenantId;
 
-      const res  = await fetch(API_URL, {
+      const res = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
+
+      status = res.status;
+      hideTyping();
+
+      if (res.status === 429) {
+        messages.pop();
+        appendMessage("ai", "I'm receiving a lot of messages right now — please wait a moment and try again.");
+        return;
       }
+
+      if (res.status === 502) {
+        messages.pop();
+        appendMessage("ai", "Our service is temporarily unavailable. Please try again in a moment, or call us directly.");
+        return;
+      }
+
+      if (!res.ok) {
+        messages.pop();
+        appendMessage("ai", "Something unexpected happened. Please refresh and try again, or contact us directly.");
+        console.error("[Vernox] Chat error:", res.status);
+        return;
+      }
+
       const data  = await res.json();
       const reply = data.message || "";
       messages.push({ role: "assistant", content: reply });
-      hideTyping();
       appendMessage("ai", reply);
       if (data.bookingConfirmed) showBookingBanner();
     } catch (err) {
       hideTyping();
-      appendMessage("ai", "Sorry, something went wrong. Please try again.");
-      console.error("Chat error:", err);
       messages.pop();
+      if (!status) {
+        appendMessage("ai", "Could not connect to our service. Please check your connection and try again.");
+      } else {
+        appendMessage("ai", "Something unexpected happened. Please refresh and try again.");
+      }
+      console.error("[Vernox] Chat error:", err);
     } finally {
       isLoading = false;
       sendBtn.disabled = false;

@@ -1,0 +1,265 @@
+PROJECT: Vernox AI LeadBot — Chat Bot & Booking System Enhancement
+
+SCOPE: Improve error handling, date parsing, message flow, and prevent data leaks in booking responses.
+
+CURRENT STATE:
+- File: artifacts/api-server/src/routes/chat.ts
+- System prompt: artifacts/api-server/src/config.ts
+- Frontend widget: artifacts/main-site/public/app.js
+
+KNOWN ISSUES:
+1. Booking datetime parsing uses new Date(raw) — "Thursday at 2pm" fails silently, defaults to tomorrow 9 AM UTC
+2. Calendar event creation errors are silently caught — no logging or retry
+3. Email sending errors silently swallowed — customer never knows if confirmation email failed
+4. No validation of captured data (email format, phone format, address validity)
+5. Error messages to user are too generic — "Sorry, something went wrong"
+6. No rate limiting — one IP can spam /api/chat unlimited times
+7. Booking confirmation includes customer's email/phone in plaintext response — could leak if response is logged/cached
+8. No conversation timeout — old chats stay in memory indefinitely
+9. AI sometimes outputs garbled JSON after BOOKING_COMPLETE:: marker — breaks parsing
+
+TASK 1: IMPROVE BOOKING DATA EXTRACTION & VALIDATION
+In artifacts/api-server/src/routes/chat.ts:
+
+After detecting BOOKING_COMPLETE::{ ... }, parse and validate:
+
+const parsedBooking = JSON.parse(bookingJson); // wrap in try-catch
+const errors = [];
+
+// Validate email
+if (!parsedBooking.email || !/.+@.+\..+/.test(parsedBooking.email)) {
+  errors.push("Invalid email");
+}
+
+// Validate phone
+const phoneClean = parsedBooking.phone.replace(/\D/g, "");
+if (phoneClean.length < 10) {
+  errors.push("Invalid phone number");
+}
+
+// Validate name
+if (!parsedBooking.name || parsedBooking.name.trim().length < 2) {
+  errors.push("Invalid name");
+}
+
+// Validate address
+if (!parsedBooking.address || parsedBooking.address.trim().length < 5) {
+  errors.push("Invalid address");
+}
+
+// Validate datetime — TRY to parse
+const bookingDate = parseBookingDatetime(parsedBooking.datetime);
+if (!bookingDate || bookingDate < new Date()) {
+  errors.push("Invalid date/time. Please try again or call us directly.");
+}
+
+if (errors.length > 0) {
+  return res.json({
+    message: `We need a few corrections: ${errors.join(", ")}. Please reply with the correct info.`,
+    bookingConfirmed: false
+  });
+}
+
+TASK 2: SMART DATETIME PARSING
+Create artifacts/api-server/src/lib/dateParser.ts:
+
+export const parseBookingDatetime = (rawString: string): Date | null => {
+  // Try ISO format first
+  const isoDate = new Date(rawString);
+  if (!isNaN(isoDate.getTime())) return isoDate;
+  
+  // Try common natural language patterns
+  const patterns = [
+    { regex: /tomorrow\s+at\s+(\d{1,2}):?(\d{2})?\s*(am|pm)?/i, fn: parseTomorrowTime },
+    { regex: /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+at\s+(\d{1,2}):?(\d{2})?\s*(am|pm)?/i, fn: parseSpecificDate },
+    { regex: /next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+at\s+(\d{1,2}):?(\d{2})?\s*(am|pm)?/i, fn: parseNextDayOfWeek },
+  ];
+  
+  for (const pattern of patterns) {
+    const match = rawString.match(pattern.regex);
+    if (match) {
+      const parsed = pattern.fn(match);
+      if (parsed) return parsed;
+    }
+  }
+  
+  // Fallback: tomorrow at 9 AM UTC
+  const fallback = new Date();
+  fallback.setDate(fallback.getDate() + 1);
+  fallback.setHours(9, 0, 0, 0);
+  
+  logger.warn({
+    msg: "Booking datetime unparseable, using fallback",
+    rawString,
+    fallbackDate: fallback.toISOString()
+  });
+  
+  return fallback;
+};
+
+// Helper functions (implement each)
+const parseTomorrowTime = (match: RegExpMatchArray): Date => { ... };
+const parseSpecificDate = (match: RegExpMatchArray): Date => { ... };
+const parseNextDayOfWeek = (match: RegExpMatchArray): Date => { ... };
+
+TASK 3: ROBUST ERROR HANDLING & LOGGING
+In artifacts/api-server/src/routes/chat.ts, improve the booking flow:
+
+// After BOOKING_COMPLETE:: is detected
+const bookingResults = {
+  confirmationEmail: { sent: false, error: null },
+  calendarEvent: { created: false, error: null }
+};
+
+try {
+  await sendConfirmationEmail(booking);
+  bookingResults.confirmationEmail.sent = true;
+} catch (error) {
+  bookingResults.confirmationEmail.error = error.message;
+  logger.error({
+    msg: "Confirmation email failed",
+    bookingId: booking.email, // use email as temp ID (should be proper booking UUID)
+    error: error.message,
+    stack: error.stack
+  });
+  // Don't throw — let booking proceed
+}
+
+try {
+  await addCalendarEvent(booking);
+  bookingResults.calendarEvent.created = true;
+} catch (error) {
+  bookingResults.calendarEvent.error = error.message;
+  logger.error({
+    msg: "Calendar event creation failed",
+    bookingId: booking.email,
+    error: error.message,
+    stack: error.stack
+  });
+  // Don't throw — let booking proceed
+}
+
+// Log success
+logger.info({
+  msg: "Booking captured",
+  email: booking.email,
+  confirmationEmail: bookingResults.confirmationEmail.sent,
+  calendarEvent: bookingResults.calendarEvent.created
+});
+
+// Return response WITHOUT including sensitive data in plaintext
+return res.json({
+  message: "✓ Booking confirmed! We've sent a confirmation email and added it to our calendar. We'll call you shortly.",
+  bookingConfirmed: true,
+  // DO NOT include: booking.email, booking.phone, booking.address
+  // DO NOT include: bookingResults details (could log customer data if response is cached)
+});
+
+TASK 4: PREVENT DATA LEAKS IN RESPONSES
+Review all API responses in /api/chat:
+- DO NOT echo back customer email, phone, or address
+- DO NOT include booking object in response
+- Only return: { message: string, bookingConfirmed: boolean }
+- Log full booking details server-side (with proper logging level guards)
+
+TASK 5: RATE LIMITING
+Add to artifacts/api-server/src/app.ts (before routes):
+
+import rateLimit from "express-rate-limit";
+
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10,             // 10 requests per minute per IP
+  message: "Too many chat messages. Please try again in a moment.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.post("/api/chat", chatLimiter, chatRoute);
+
+TASK 6: IMPROVE SYSTEM PROMPT
+In artifacts/api-server/src/config.ts, enhance the SYSTEM_PROMPT:
+
+Add to the system prompt:
+"When the customer provides a date/time, always repeat it back exactly as you heard it, then confirm: 'So that's [DAY] at [TIME], right?'"
+
+"If the customer gives a vague date like 'next Thursday', ask: 'What time would work best? Morning, afternoon, or evening?'"
+
+"CRITICAL: When you're ready to complete the booking, output EXACTLY this format on a new line:
+BOOKING_COMPLETE::{\"name\":\"[FULL NAME]\",\"email\":\"[EMAIL]\",\"phone\":\"[PHONE]\",\"address\":\"[SERVICE ADDRESS]\",\"datetime\":\"[ISO FORMAT OR NATURAL LANGUAGE]\",\"issue\":\"[SERVICE ISSUE]\"}"
+
+"Do NOT add extra text after the BOOKING_COMPLETE:: line. Do NOT include any other JSON objects."
+
+TASK 7: FRONTEND WIDGET IMPROVEMENTS
+In artifacts/main-site/public/app.js:
+
+Improve error display:
+
+// Instead of generic error:
+if (!response.ok) {
+  messages.pop(); // Remove failed user message
+  appendMessage("ai", "Sorry, something went wrong. Please try again.", false);
+  return;
+}
+
+// Better error handling:
+const data = await response.json();
+if (response.status === 429) {
+  appendMessage("ai", "I'm processing many requests right now. Please wait a moment and try again.", false);
+} else if (response.status === 502) {
+  appendMessage("ai", "Our service is temporarily unavailable. Please try again in a moment or call us directly.", false);
+} else if (!response.ok) {
+  appendMessage("ai", "Something unexpected happened. Please refresh and try again, or contact us.", false);
+  logger.error({ status: response.status, error: data.error });
+}
+
+Add conversation timeout:
+
+// Clear old conversations after 30 minutes of inactivity
+let lastActivityTime = Date.now();
+const CONVERSATION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+const checkConversationTimeout = () => {
+  if (Date.now() - lastActivityTime > CONVERSATION_TIMEOUT) {
+    messages = []; // Clear conversation
+    appendMessage("ai", "Your session has expired. Please refresh to start a new conversation.", false);
+  }
+};
+
+setInterval(checkConversationTimeout, 60000); // Check every minute
+document.addEventListener("mousemove", () => { lastActivityTime = Date.now(); });
+document.addEventListener("keypress", () => { lastActivityTime = Date.now(); });
+
+TASK 8: MONITORING & ALERTS
+Add logging for critical failures:
+
+In artifacts/api-server/src/routes/chat.ts, after booking flow:
+
+if (!bookingResults.confirmationEmail.sent || !bookingResults.calendarEvent.created) {
+  // Alert: at least one booking step failed
+  // In production, this should trigger: Slack message, PagerDuty alert, email to admin
+  logger.error({
+    msg: "ALERT: Booking partially failed",
+    severity: "high",
+    bookingEmail: booking.email,
+    confirmationEmail: bookingResults.confirmationEmail,
+    calendarEvent: bookingResults.calendarEvent
+  });
+}
+
+SECURITY REQUIREMENTS:
+1. NO sensitive data (email, phone, address) in API responses
+2. NO sensitive data in error messages
+3. Validate all booking fields server-side
+4. Rate limit /api/chat to prevent abuse
+5. Log errors with context (booking email only, not phone/address)
+6. All datetime parsing must be robust — never silently default without warning user
+
+OUTPUT:
+1. New artifacts/api-server/src/lib/dateParser.ts with intelligent date parsing
+2. Enhanced artifacts/api-server/src/routes/chat.ts with error handling + validation
+3. Updated artifacts/api-server/src/config.ts with improved system prompt
+4. Rate limiting middleware in artifacts/api-server/src/app.ts
+5. Enhanced frontend artifacts/main-site/public/app.js with timeout + better error UI
+6. Logging strategy for booking failures
+7. Monitoring hooks for critical failures (ready for Slack/PagerDuty integration)
