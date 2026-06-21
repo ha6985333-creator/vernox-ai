@@ -1,2 +1,3 @@
 ---
 - [UI Design System](ui-design-system.md) — Inter font, #1a1a1a dark sidebars/backgrounds, 6px radius, no gradients/shadows/blur, @import must be first in CSS
+- [Session cookies in iframe](session-cookies-iframe.md) — Replit preview is an iframe; session cookies need SameSite=None + Secure=true or /auth/me 401s after login
