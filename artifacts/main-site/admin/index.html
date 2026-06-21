@@ -136,9 +136,9 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Name</th><th>Email</th><th>Plan</th><th>Status</th><th>Joined</th><th>Actions</th></tr>
+            <tr><th>Name</th><th>Business</th><th>Type</th><th>Email</th><th>Plan</th><th>Status</th><th>Joined</th><th>Actions</th></tr>
           </thead>
-          <tbody id="tenantsBody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+          <tbody id="tenantsBody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -150,6 +150,12 @@
       <div class="error-toast" id="modalError"></div>
       <div class="field"><label>Full Name</label><input type="text" id="newName" placeholder="Jane Doe" /></div>
       <div class="field"><label>Email Address</label><input type="email" id="newEmail" placeholder="jane@example.com" /></div>
+      <div class="field"><label>Business Name</label><input type="text" id="newBusinessName" placeholder="Smith Plumbing Co." /></div>
+      <div class="field">
+        <label>Business Type</label>
+        <select id="newBusinessType"><option value="general">General / Other</option></select>
+        <p style="margin:6px 0 0;font-size:0.78rem;color:var(--muted);">The bot tailors its questions to this industry.</p>
+      </div>
       <div class="field">
         <label>Plan</label>
         <select id="newPlan">
@@ -201,7 +207,16 @@
       if (!me || me.role !== "admin") { window.location.href = "/login"; return; }
       document.getElementById("adminEmail").textContent = me.email;
       document.getElementById("topbarUser").textContent = me.email;
+      await loadBusinessTypes();
       loadStats(); loadTenants(); loadSales();
+    }
+    let BUSINESS_TYPE_LABELS = {};
+    async function loadBusinessTypes() {
+      const types = await apiFetch("/admin/business-types");
+      if (!Array.isArray(types)) return;
+      const sel = document.getElementById("newBusinessType");
+      sel.innerHTML = types.map(t => `<option value="${esc(t.value)}">${esc(t.label)}</option>`).join("");
+      BUSINESS_TYPE_LABELS = Object.fromEntries(types.map(t => [t.value, t.label]));
     }
     async function loadStats() {
       const s = await apiFetch("/admin/stats");
@@ -280,10 +295,12 @@
     async function loadTenants() {
       const tenants = await apiFetch("/admin/tenants");
       const body = document.getElementById("tenantsBody");
-      if (!tenants || tenants.length === 0) { body.innerHTML = '<tr><td colspan="6" class="empty">No customers yet. Add one above.</td></tr>'; return; }
+      if (!tenants || tenants.length === 0) { body.innerHTML = '<tr><td colspan="8" class="empty">No customers yet. Add one above.</td></tr>'; return; }
       body.innerHTML = tenants.map(t => `
         <tr>
           <td><strong>${esc(t.name)}</strong></td>
+          <td>${esc(t.businessName || "—")}</td>
+          <td>${esc(BUSINESS_TYPE_LABELS[t.businessType] || t.businessType || "—")}</td>
           <td>${esc(t.email)}</td>
           <td><span class="badge badge-plan">${esc(t.plan)}</span></td>
           <td><span class="badge badge-${t.status}">${esc(t.status)}</span></td>
@@ -321,17 +338,20 @@
       const name = document.getElementById("newName").value.trim();
       const email = document.getElementById("newEmail").value.trim();
       const plan = document.getElementById("newPlan").value;
+      const businessType = document.getElementById("newBusinessType").value;
+      const businessName = document.getElementById("newBusinessName").value.trim();
       const errEl = document.getElementById("modalError");
       errEl.style.display = "none";
       if (!name || !email) { errEl.textContent = "Name and email are required."; errEl.style.display = "block"; return; }
       const btn = document.getElementById("saveBtn");
       btn.disabled = true; btn.textContent = "Creating…";
-      const res = await apiFetch("/admin/tenants", { method: "POST", body: JSON.stringify({ name, email, plan }) });
+      const res = await apiFetch("/admin/tenants", { method: "POST", body: JSON.stringify({ name, email, plan, businessType, businessName }) });
       btn.disabled = false; btn.textContent = "Create Account";
       if (!res || res.error) { errEl.textContent = res?.error || "Something went wrong."; errEl.style.display = "block"; return; }
       document.getElementById("addModal").classList.add("hidden");
       document.getElementById("newName").value = "";
       document.getElementById("newEmail").value = "";
+      document.getElementById("newBusinessName").value = "";
       document.getElementById("credsEmail").textContent = res.tenant.email;
       document.getElementById("credsPassword").textContent = res.tempPassword;
       document.getElementById("credsModal").classList.remove("hidden");

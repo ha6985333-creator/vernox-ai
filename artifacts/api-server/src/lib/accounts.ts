@@ -8,6 +8,8 @@ export interface CreateTenantInput {
   name: string;
   email: string;
   plan?: string;
+  businessType?: string;
+  businessName?: string;
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;
 }
@@ -21,6 +23,8 @@ export async function createTenantWithCredentials(input: CreateTenantInput) {
     email: input.email,
     plan: input.plan ?? "starter",
     status: "active",
+    businessType: input.businessType ?? "general",
+    businessName: input.businessName?.trim() || null,
     stripeCustomerId: input.stripeCustomerId,
     stripeSubscriptionId: input.stripeSubscriptionId,
   }).returning();

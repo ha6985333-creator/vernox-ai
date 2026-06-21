@@ -34,7 +34,8 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 
 ## Where things live
 
-- `artifacts/api-server/src/config.ts` — business type + AI system prompt
+- `artifacts/api-server/src/config.ts` — platform-level fallback business type + AI system prompt (used by email/reviews)
+- `artifacts/api-server/src/businessTypes.ts` — registry of ~21 selectable business types + `getSystemPrompt(type,name)` for per-tenant tailored chat prompts
 - `artifacts/api-server/src/app.ts` — Express app + middleware
 - `artifacts/api-server/src/routes/` — auth, admin, chat, webhooks
 - `artifacts/api-server/src/lib/` — auth helpers, email, accounts, logger
@@ -60,7 +61,8 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 | GET | `/api/auth/me` | session | Current user |
 | POST | `/api/buy` | public | Submit Buy Now lead — saves `purchase_requests` row, emails owner + customer (rate-limited 5/hr per IP) |
 | GET | `/api/admin/tenants` | admin | List all tenants |
-| POST | `/api/admin/tenants` | admin | Manually create tenant |
+| POST | `/api/admin/tenants` | admin | Manually create tenant (accepts `businessType`, `businessName`) |
+| GET | `/api/admin/business-types` | admin | List selectable business types (`{value,label}`) |
 | PATCH | `/api/admin/tenants/:id/status` | admin | Suspend/activate |
 | GET | `/api/admin/stats` | admin | Stats counters |
 | GET | `/api/admin/purchase-requests` | admin | List all sale requests |
@@ -69,7 +71,7 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 
 ## Product
 
-- **Chat widget**: AI-powered lead qualification + appointment booking for any business type (currently configured as "plumber"). Change `BUSINESS_TYPE` and `SYSTEM_PROMPT` in `config.ts` to switch industries.
+- **Chat widget**: AI-powered lead qualification + appointment booking. The bot is **multipurpose** — each tenant has a `businessType` (set when the admin creates the customer) and the chat handler builds a tailored system prompt via `getSystemPrompt()` so it asks industry-appropriate qualifying questions (e.g. restaurant → party size + date/time, no service address). Non-visit business types skip the address requirement. Tenants without a type default to `general`. The `config.ts` `SYSTEM_PROMPT` is now only a platform-level fallback (email/reviews).
 - **Booking detection**: When AI detects a completed booking it emits `BOOKING_COMPLETE::{}`, triggering a green confirmation banner and sending a notification email.
 - **Admin dashboard**: Master admin can view all customers, create accounts manually, suspend/activate tenants, and review/triage incoming sale requests.
 - **Sale notifications**: The `/buy` form POSTs to `/api/buy` → saves a `purchase_requests` row, emails the owner (NOTIFY_EMAIL) a notification, and emails the customer a confirmation. Each request shows in the admin "Sale Requests" table with a status dropdown (new/contacted/paid/closed) and a "New Sale Requests" stat card.
@@ -84,7 +86,7 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 
 ## User preferences
 
-- Business type: plumber (change in config.ts)
+- Business type: per-tenant (chosen in admin "Add Customer"). `config.ts` plumber prompt is only the platform-level fallback.
 - Notify email: ha6985333@gmail.com
 - Pricing: $899/month, no setup fee
 - Payment provider: manual for now — "Buy Now" sends users to `/buy`; team contacts them with a payment link, then emails login credentials after payment. (Payoneer IPN webhook still exists in code but is not the active flow.)

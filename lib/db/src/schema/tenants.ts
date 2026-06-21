@@ -8,6 +8,10 @@ export const tenantsTable = pgTable("tenants", {
   email: text("email").notNull().unique(),
   plan: text("plan").notNull().default("starter"),
   status: text("status").notNull().default("active"),
+  // Drives the chat widget's tailored qualifying questions per industry.
+  businessType: text("business_type").notNull().default("general"),
+  // What the bot calls the business (falls back to a generic name if unset).
+  businessName: text("business_name"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

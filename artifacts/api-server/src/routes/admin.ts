@@ -4,9 +4,14 @@ import { tenantsTable, usersTable, purchaseRequestsTable } from "@workspace/db";
 import { desc, count } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth.js";
 import { createTenantWithCredentials } from "../lib/accounts.js";
+import { BUSINESS_TYPES, isValidBusinessType } from "../businessTypes.js";
 
 const router: IRouter = Router();
 router.use(requireAdmin);
+
+router.get("/business-types", (_req, res) => {
+  res.json(BUSINESS_TYPES.map((t) => ({ value: t.value, label: t.label })));
+});
 
 router.get("/stats", async (req, res) => {
   const [totalTenants] = await db.select({ count: count() }).from(tenantsTable);
@@ -51,11 +56,16 @@ router.get("/tenants/:id", async (req, res) => {
 });
 
 router.post("/tenants", async (req, res) => {
-  const { name, email, plan } = req.body as { name: string; email: string; plan?: string };
+  const { name, email, plan, businessType, businessName } = req.body as {
+    name: string; email: string; plan?: string; businessType?: string; businessName?: string;
+  };
   if (!name || !email) { res.status(400).json({ error: "name and email are required" }); return; }
+  if (businessType && !isValidBusinessType(businessType)) {
+    res.status(400).json({ error: "Invalid business type" }); return;
+  }
 
   try {
-    const result = await createTenantWithCredentials({ name, email, plan });
+    const result = await createTenantWithCredentials({ name, email, plan, businessType, businessName });
     res.status(201).json({ tenant: result.tenant, tempPassword: result.tempPassword });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to create tenant";

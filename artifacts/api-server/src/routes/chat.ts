@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import Groq from "groq-sdk";
-import { SYSTEM_PROMPT } from "../config.js";
+import { getBusinessType, getSystemPrompt } from "../businessTypes.js";
 import { sendConfirmationEmail, type BookingDetails } from "../lib/email.js";
 import { addCalendarEvent } from "../lib/calendar.js";
 import { db } from "@workspace/db";
@@ -24,7 +24,7 @@ interface ValidationResult {
   errors: string[];
 }
 
-function extractAndValidateBooking(reply: string): {
+function extractAndValidateBooking(reply: string, collectAddress = true): {
   clean: string;
   result: ValidationResult;
 } {
@@ -72,8 +72,8 @@ function extractAndValidateBooking(reply: string): {
     errors.push("a valid phone number (at least 10 digits)");
   }
 
-  // Address
-  if (!parsed.address || parsed.address.trim().length < 5) {
+  // Address — only required for business types that send someone to a location
+  if (collectAddress && (!parsed.address || parsed.address.trim().length < 5)) {
     errors.push("a service address");
   }
 
@@ -97,7 +97,7 @@ function extractAndValidateBooking(reply: string): {
         name: parsed.name!.trim(),
         email: parsed.email!.trim().toLowerCase(),
         phone: parsed.phone!.trim(),
-        address: parsed.address!.trim(),
+        address: (parsed.address ?? "").trim(),
         datetime: parsedDate!.toISOString(),
         issue: parsed.issue ?? "",
       },
@@ -144,12 +144,29 @@ router.post("/chat", async (req, res) => {
   }
 
   try {
+    // Resolve this tenant's industry so the bot asks tailored questions.
+    let businessTypeValue: string | undefined;
+    let businessName: string | undefined;
+    if (tenantId) {
+      const tenant = await db.query.tenantsTable.findFirst({
+        where: (t, { eq }) => eq(t.id, tenantId),
+      });
+      if (tenant) {
+        businessTypeValue = tenant.businessType;
+        businessName = tenant.businessName ?? undefined;
+      } else {
+        req.log.warn({ tenantId }, "chat: tenantId provided but no matching tenant found; falling back to general prompt");
+      }
+    }
+    const businessType = getBusinessType(businessTypeValue);
+    const systemPrompt = getSystemPrompt(businessTypeValue, businessName);
+
     const groq = new Groq({ apiKey });
 
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         ...messages,
       ],
       max_tokens: 600,
@@ -157,7 +174,7 @@ router.post("/chat", async (req, res) => {
     });
 
     const rawReply = completion.choices[0]?.message?.content ?? "";
-    const { clean, result } = extractAndValidateBooking(rawReply);
+    const { clean, result } = extractAndValidateBooking(rawReply, businessType.collectAddress);
 
     // ── Validation errors ─────────────────────────────────────────
     if (result.errors.length > 0) {
