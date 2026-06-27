@@ -27,6 +27,10 @@ from = "/login"
 to = "/login.html"
 
 [[services.production.rewrites]]
+from = "/buy"
+to = "/buy.html"
+
+[[services.production.rewrites]]
 from = "/demo"
 to = "/demo.html"
 
