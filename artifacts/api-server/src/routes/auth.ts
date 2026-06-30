@@ -2,6 +2,8 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db";
 import { verifyPassword, hashPassword } from "../lib/auth.js";
+import { getTier, featuresForPlan } from "../tiers.js";
+import { getBusinessType } from "../businessTypes.js";
 
 const router: IRouter = Router();
 
@@ -103,7 +105,22 @@ router.get("/auth/tenant", async (req, res) => {
     res.status(404).json({ error: "No tenant found" });
     return;
   }
-  res.json({ tenantId: user.tenantId });
+  const tenant = await db.query.tenantsTable.findFirst({ where: (t, { eq }) => eq(t.id, user.tenantId!) });
+  if (!tenant) {
+    res.status(404).json({ error: "No tenant found" });
+    return;
+  }
+  const tier = getTier(tenant.plan);
+  res.json({
+    tenantId: tenant.id,
+    plan: tier.key,
+    planLabel: tier.label,
+    planPriceText: tier.priceText,
+    features: featuresForPlan(tenant.plan),
+    businessType: getBusinessType(tenant.businessType).label,
+    businessName: tenant.businessName ?? tenant.name,
+    status: tenant.status,
+  });
 });
 
 export default router;

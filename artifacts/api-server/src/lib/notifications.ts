@@ -17,7 +17,10 @@ export interface OwnerNotifyInput {
   booking: BookingDetails;
   leadId: string | null;
   whenText: string;
-  qualityScore: number;
+  /** Lead quality score (0-100), or null when the tenant's plan doesn't include lead scoring. */
+  qualityScore: number | null;
+  /** Whether the tenant's plan allows Slack notifications (Business+). Defaults false. */
+  slackAllowed?: boolean;
 }
 
 type NotifyStatus = "sent" | "failed" | "skipped";

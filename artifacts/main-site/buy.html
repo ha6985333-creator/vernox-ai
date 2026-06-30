@@ -86,7 +86,7 @@
     <!-- ── FORM ─────────────────────────────────────────────── -->
     <div id="formView">
       <div class="head">
-        <span class="badge">$899 / month · no setup fee</span>
+        <span class="badge" id="planBadge">$899 / month · no setup fee</span>
         <h1>Get started with Vernox AI</h1>
         <p class="lead">Tell us a bit about you and we'll send your secure payment link, followed by your login credentials.</p>
       </div>
@@ -108,9 +108,14 @@
           <label for="phone">Phone number</label>
           <input type="tel" id="phone" name="phone" placeholder="+1 555 123 4567" autocomplete="tel" required />
         </div>
+        <div>
+          <label for="services">Services you offer <span style="font-weight:400;color:var(--muted);">(optional)</span></label>
+          <textarea id="services" name="services" rows="3" placeholder="One per line — e.g.&#10;Drain cleaning&#10;Water heater repair&#10;Emergency callouts" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.875rem;font-family:inherit;outline:none;color:var(--text);resize:vertical;"></textarea>
+          <p style="margin:6px 0 0;font-size:0.76rem;color:var(--muted);">We'll set up your AI assistant to only offer these services.</p>
+        </div>
         <button class="btn" type="submit" id="submitBtn">Request my payment link</button>
       </form>
-      <div class="back"><a href="/">← Back to home</a></div>
+      <div class="back"><a href="/#pricing">← Back to plans</a></div>
     </div>
 
     <!-- ── SUCCESS ──────────────────────────────────────────── -->
@@ -128,7 +133,7 @@
           <span class="step-num">1</span>
           <div class="step-body">
             <h3>You'll get your payment link</h3>
-            <p>Our team will contact you shortly with a secure link to complete your $899/month subscription.</p>
+            <p id="step1Text">Our team will contact you shortly with a secure link to complete your subscription.</p>
           </div>
         </div>
         <div class="step">
@@ -156,6 +161,30 @@
     const form = document.getElementById("buyForm");
     const errorEl = document.getElementById("error");
     const submitBtn = document.getElementById("submitBtn");
+    const planBadge = document.getElementById("planBadge");
+    const step1Text = document.getElementById("step1Text");
+
+    const VALID_TIERS = ["pro", "business", "enterprise"];
+    const params = new URLSearchParams(window.location.search);
+    let selectedTier = (params.get("tier") || "pro").toLowerCase();
+    if (!VALID_TIERS.includes(selectedTier)) selectedTier = "pro";
+
+    // Load tier details to lock the displayed plan + price.
+    (async () => {
+      try {
+        const res = await fetch("/api/tiers");
+        if (!res.ok) return;
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : (data.tiers || []);
+        const tier = list.find((t) => t.key === selectedTier);
+        if (tier) {
+          planBadge.textContent = `${tier.label} · ${tier.priceText}/month · no setup fee`;
+          if (step1Text) {
+            step1Text.textContent = `Our team will contact you shortly with a secure link to complete your ${tier.label} plan (${tier.priceText}/month) subscription.`;
+          }
+        }
+      } catch (_) { /* keep default badge */ }
+    })();
 
     function showError(msg) {
       errorEl.textContent = msg;
@@ -170,11 +199,18 @@
       submitBtn.disabled = true;
       submitBtn.textContent = "Sending…";
 
+      const services = document.getElementById("services").value
+        .split("\n")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
       const payload = {
         name: document.getElementById("name").value.trim(),
         businessName: document.getElementById("businessName").value.trim(),
         email: document.getElementById("email").value.trim(),
         phone: document.getElementById("phone").value.trim(),
+        tier: selectedTier,
+        services,
       };
 
       try {

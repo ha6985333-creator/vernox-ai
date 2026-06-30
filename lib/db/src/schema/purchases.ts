@@ -8,6 +8,11 @@ export const purchaseRequestsTable = pgTable("purchase_requests", {
   email: text("email").notNull(),
   businessName: text("business_name").notNull(),
   phone: text("phone").notNull(),
+  // Selected pricing tier (pro/business/enterprise). Defaults to pro for
+  // legacy rows and any request that doesn't specify one.
+  tier: text("tier").notNull().default("pro"),
+  // Free-text services the buyer offers, captured on the Buy form.
+  services: text("services").array(),
   status: text("status").notNull().default("new"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -18,6 +23,9 @@ export const insertPurchaseRequestSchema = createInsertSchema(purchaseRequestsTa
   businessName: (s) => s.trim().min(1, "Business name is required").max(160),
   phone: (s) => s.trim().min(5, "A valid phone number is required").max(40)
     .regex(/^[0-9+\-()\s.]+$/, "Phone number contains invalid characters"),
+  tier: () => z.enum(["pro", "business", "enterprise"]).default("pro"),
+  services: () =>
+    z.array(z.string().trim().min(1).max(120)).max(50).optional(),
 }).omit({
   id: true,
   createdAt: true,

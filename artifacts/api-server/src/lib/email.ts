@@ -2,6 +2,7 @@ import { Resend } from "resend";
 import { db, emailLogsTable } from "@workspace/db";
 import { logger } from "./logger.js";
 import { BUSINESS_TYPE, BUSINESS_NAME, BUSINESS_EMAIL } from "../config.js";
+import { getTier } from "../tiers.js";
 import type { Lead } from "@workspace/db";
 
 export interface BookingDetails {
@@ -25,6 +26,8 @@ export interface PurchaseRequestInput {
   email: string;
   businessName: string;
   phone: string;
+  tier?: string;
+  services?: string[] | null;
 }
 
 // The "from" address for all outbound email. Until a domain is verified at
@@ -269,22 +272,30 @@ export async function sendPurchaseNotification(input: PurchaseRequestInput): Pro
   const to = BUSINESS_EMAIL;
   if (!to) { logger.warn("BUSINESS_EMAIL/NOTIFY_EMAIL not configured — skipping purchase notification"); return; }
 
+  const tier = getTier(input.tier);
+  const servicesList = (input.services ?? []).map((s) => s.trim()).filter(Boolean);
+  const servicesRow = servicesList.length
+    ? `<tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Services</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${esc(servicesList.join(", "))}</td></tr>`
+    : "";
+
   const { error } = await resend.emails.send({
     from: FROM_EMAIL,
     to,
-    subject: `💰 New Sale Request: ${input.businessName} (${input.name})`,
+    subject: `💰 New Sale Request: ${input.businessName} (${input.name}) — ${tier.label} ${tier.priceText}/mo`,
     html: `
       <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#f9fafb;border-radius:12px;">
         <div style="background:#059669;border-radius:8px;padding:24px;text-align:center;margin-bottom:24px;">
           <h1 style="color:#fff;margin:0;font-size:1.5rem;">New Sale Request</h1>
           <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:0.9rem;">Someone clicked Buy Now on ${BUSINESS_NAME}</p>
         </div>
-        <p style="color:#374151;">Send them a payment link, then their login credentials once paid.</p>
+        <p style="color:#374151;">Send them a payment link for the <strong>${esc(tier.label)}</strong> plan (${esc(tier.priceText)}/month), then their login credentials once paid.</p>
         <table style="width:100%;border-collapse:collapse;margin:20px 0;">
-          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;width:40%;">Name</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${input.name}</td></tr>
-          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Business</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${input.businessName}</td></tr>
-          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Email</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;"><a href="mailto:${input.email}" style="color:#4f46e5;">${input.email}</a></td></tr>
-          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Phone</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;"><a href="tel:${input.phone}" style="color:#4f46e5;">${input.phone}</a></td></tr>
+          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;width:40%;">Name</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${esc(input.name)}</td></tr>
+          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Business</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${esc(input.businessName)}</td></tr>
+          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Plan</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${esc(tier.label)} · ${esc(tier.priceText)}/month</td></tr>
+          ${servicesRow}
+          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Email</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;"><a href="mailto:${esc(input.email)}" style="color:#4f46e5;">${esc(input.email)}</a></td></tr>
+          <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Phone</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;"><a href="tel:${esc(input.phone)}" style="color:#4f46e5;">${esc(input.phone)}</a></td></tr>
         </table>
         <p style="color:#6b7280;font-size:0.85rem;">— ${BUSINESS_NAME} website</p>
       </div>`,
@@ -298,6 +309,8 @@ export async function sendPurchaseConfirmation(input: PurchaseRequestInput): Pro
   const resend = getResend();
   if (!resend) { logger.warn("RESEND_API_KEY not set — skipping purchase confirmation"); return; }
 
+  const tier = getTier(input.tier);
+
   const { error } = await resend.emails.send({
     from: FROM_EMAIL,
     to: input.email,
@@ -310,7 +323,7 @@ export async function sendPurchaseConfirmation(input: PurchaseRequestInput): Pro
         </div>
         <p style="color:#374151;">We've received your request to get started for <strong>${input.businessName}</strong>. Here's what happens next:</p>
         <ol style="color:#374151;line-height:1.7;padding-left:20px;margin:16px 0;">
-          <li>Our team will contact you shortly with a secure link to complete your <strong>$899/month</strong> subscription.</li>
+          <li>Our team will contact you shortly with a secure link to complete your <strong>${esc(tier.label)} plan (${esc(tier.priceText)}/month)</strong> subscription.</li>
           <li>Once payment is confirmed, we'll email your login credentials so you can sign in to your dashboard.</li>
           <li>We handle full onboarding — your AI assistant will be live and qualifying leads in no time.</li>
         </ol>

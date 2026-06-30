@@ -1,8 +1,24 @@
 import { Router, type IRouter } from "express";
 import { db, purchaseRequestsTable, insertPurchaseRequestSchema } from "@workspace/db";
 import { sendPurchaseNotification, sendPurchaseConfirmation } from "../lib/email.js";
+import { TIERS } from "../tiers.js";
 
 const router: IRouter = Router();
+
+// Public: the pricing tiers (used by the Buy page to render the locked tier).
+router.get("/tiers", (_req, res) => {
+  res.json(
+    TIERS.map((t) => ({
+      key: t.key,
+      label: t.label,
+      price: t.price,
+      priceText: t.priceText,
+      tagline: t.tagline,
+      featured: t.featured,
+      features: t.features,
+    })),
+  );
+});
 
 router.post("/buy", async (req, res) => {
   const parsed = insertPurchaseRequestSchema.safeParse(req.body);

@@ -3,6 +3,7 @@ import { tenantsTable, usersTable, type BusinessHours } from "@workspace/db";
 import { generateTempPassword, hashPassword } from "./auth.js";
 import { sendCredentialsEmail } from "./email.js";
 import { logger } from "./logger.js";
+import { normalizePlan } from "../tiers.js";
 
 export interface CreateTenantInput {
   name: string;
@@ -28,7 +29,7 @@ export async function createTenantWithCredentials(input: CreateTenantInput) {
   const [tenant] = await db.insert(tenantsTable).values({
     name: input.name,
     email: input.email,
-    plan: input.plan ?? "starter",
+    plan: normalizePlan(input.plan),
     status: "active",
     businessType: input.businessType ?? "general",
     businessName: input.businessName?.trim() || null,
@@ -55,7 +56,7 @@ export async function createTenantWithCredentials(input: CreateTenantInput) {
   if (!user) throw new Error("Failed to create user");
 
   try {
-    await sendCredentialsEmail({ name: input.name, email: input.email, password: tempPassword, plan: input.plan ?? "starter" });
+    await sendCredentialsEmail({ name: input.name, email: input.email, password: tempPassword, plan: normalizePlan(input.plan) });
   } catch (err) {
     logger.error({ err }, "Failed to send credentials email");
   }
