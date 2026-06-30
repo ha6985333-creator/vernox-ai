@@ -1,0 +1,320 @@
+You are enhancing Vernox AI to make the AI chatbot industry-specific. Currently, the AI 
+is generic and asks generic questions. After this update, it will know what business it's 
+serving and ask targeted questions.
+
+CURRENT STATE:
+- Backend: Node.js/Express
+- Database: PostgreSQL via Supabase
+- Embedding: Single <script> tag that loads widget
+- AI: Groq API with generic system prompt
+- Frontend: React embed widget + tenant portal
+
+THE PROBLEM:
+A restaurant's AI asks the same questions as a dentist's AI. This is weak. The AI should:
+- Ask restaurant-specific questions: "How many guests? Dietary restrictions?"
+- Ask dentist-specific questions: "What service? Emergency or routine?"
+- Personalize responses with business name
+- Only offer services that business actually provides
+
+YOUR TASK:
+Build a system where the AI knows its business context and adjusts behavior accordingly.
+
+IMPLEMENTATION REQUIREMENTS:
+
+### STEP 1: Update Businesses Table in Database
+
+Add these columns to track business metadata:
+
+```sql
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS (
+  business_type VARCHAR(100), -- 'Restaurant', 'Dentist', 'Plumber', 'Salon', etc.
+  services TEXT[], -- Array of services offered
+  business_hours JSONB, -- { "Monday": ["09:00", "17:00"], "Tuesday": [...] }
+  booking_duration_minutes INTEGER DEFAULT 60, -- How long each appointment is
+  timezone VARCHAR(100),
+  max_daily_bookings INTEGER, -- Optional: max bookings per day
+  business_description TEXT -- "Downtown Dental - Family dentistry"
+);
+
+-- Example data:
+INSERT INTO businesses VALUES (
+  ...,
+  business_type: 'Restaurant',
+  services: ['Dine-in Reservation', 'Takeout Order', 'Catering'],
+  timezone: 'America/New_York'
+);
+```
+
+### STEP 2: Update the Widget Embed Code
+
+The embed code now needs to pass business context. Update the embed code generation in your tenant portal:
+
+```javascript
+// In your tenant portal backend, when generating the embed code:
+
+app.get('/api/embed-code/:businessId', async (req, res) => {
+  const business = await db.query(
+    'SELECT id, business_name, business_type, services, timezone FROM businesses WHERE id = $1',
+    [req.params.businessId]
+  );
+  
+  const embedCode = `
+<script>
+  window.vernoxConfig = {
+    businessId: "${business.id}",
+    businessName: "${business.business_name}",
+    businessType: "${business.business_type}",
+    services: ${JSON.stringify(business.services)},
+    timezone: "${business.timezone}"
+  };
+</script>
+<script src="https://vernoxai.digital/widget.js"></script>
+  `;
+  
+  res.json({ embedCode });
+});
+```
+
+Customers paste this embed code (which now includes business context).
+
+### STEP 3: Update Widget Script to Capture Context
+
+The widget.js file should now read the window.vernoxConfig:
+
+```javascript
+// widget.js (embedded on customer's website)
+
+(function() {
+  const config = window.vernoxConfig || {};
+  
+  // Store in window for chatbot to access
+  window.vernoxBusinessContext = {
+    businessId: config.businessId,
+    businessName: config.businessName,
+    businessType: config.businessType,
+    services: config.services || [],
+    timezone: config.timezone
+  };
+  
+  // When creating the iframe for the chat widget, pass this context
+  const chatFrame = document.createElement('iframe');
+  chatFrame.src = `https://vernoxai.digital/chat?businessId=${config.businessId}&ctx=${btoa(JSON.stringify(config))}`;
+  // ... rest of widget code
+})();
+```
+
+### STEP 4: Create Business-Specific AI Prompts
+
+Build a prompt factory that generates industry-specific prompts:
+
+```javascript
+// backend/prompts/industryPrompts.js
+
+const industryPrompts = {
+  restaurant: {
+    systemPrompt: `You are the AI assistant for {businessName}, a restaurant.
+    
+Your job: Capture reservations and qualify dining inquiries.
+
+Available services: {services}
+
+When a customer contacts you:
+1. Ask: "How many guests are you booking for?"
+2. Ask: "What date and time would work best?"
+3. Ask: "Do you have any dietary restrictions we should know about?"
+4. Capture their name and phone number
+5. Confirm the reservation
+
+If they mention a service not offered, say: "We don't offer that, but we specialize in {services}. 
+Would a {service} work instead?"
+
+Be warm, friendly, and like you work at an actual restaurant.`,
+    
+    variables: ['businessName', 'services']
+  },
+
+  dentist: {
+    systemPrompt: `You are the AI assistant for {businessName}, a dental practice.
+    
+Your job: Schedule appointments and qualify dental inquiries.
+
+Available services: {services}
+
+When a customer contacts you:
+1. Ask: "What service are you interested in? ({services})"
+2. Ask: "Are you an existing patient or new?"
+3. Ask: "When would be convenient for you?"
+4. Capture their name and phone number
+5. Confirm the appointment
+
+Be professional, reassuring, and answer basic dental questions if asked.`,
+    
+    variables: ['businessName', 'services']
+  },
+
+  plumber: {
+    systemPrompt: `You are the AI assistant for {businessName}, a plumbing company.
+    
+Your job: Capture service requests and schedule appointments.
+
+Available services: {services}
+
+When a customer contacts you:
+1. Ask: "What's the issue? ({services})"
+2. Ask: "Is this urgent or can it wait a few days?"
+3. Ask: "What date and time work for you?"
+4. Capture their name and address
+5. Confirm the appointment
+
+Be practical, reassuring about emergency services, and knowledgeable about plumbing.`,
+    
+    variables: ['businessName', 'services']
+  },
+
+  salon: {
+    systemPrompt: `You are the AI assistant for {businessName}, a salon.
+    
+Your job: Book appointments and capture service preferences.
+
+Available services: {services}
+
+When a customer contacts you:
+1. Ask: "What service are you interested in? ({services})"
+2. Ask: "Do you have a preferred stylist?"
+3. Ask: "When would you like to come in?"
+4. Capture their name and phone number
+5. Confirm the appointment
+
+Be friendly, fashion-forward, and enthusiastic about services.`,
+    
+    variables: ['businessName', 'services']
+  },
+
+  // Add more industries as needed
+  default: {
+    systemPrompt: `You are an AI assistant for {businessName}.
+
+Your job: Help customers book appointments and answer questions.
+
+Available services: {services}
+
+When a customer contacts you:
+1. Ask what they need
+2. Confirm the best time
+3. Capture their contact information
+4. Confirm the booking
+
+Be helpful, professional, and friendly.`,
+    
+    variables: ['businessName', 'services']
+  }
+};
+
+// Function to generate the actual prompt
+function generateSystemPrompt(businessType, businessName, services) {
+  const template = industryPrompts[businessType?.toLowerCase()] || industryPrompts.default;
+  
+  let prompt = template.systemPrompt;
+  prompt = prompt.replace('{businessName}', businessName);
+  prompt = prompt.replace(/{services}/g, services.join(', '));
+  
+  return prompt;
+}
+
+module.exports = { generateSystemPrompt };
+```
+
+### STEP 5: Update Groq API Call to Use Business Context
+
+When calling Groq AI, use the business-specific prompt:
+
+```javascript
+// backend/routes/chat.js
+
+const { generateSystemPrompt } = require('../prompts/industryPrompts');
+
+app.post('/api/chat', async (req, res) => {
+  const { businessId, userMessage } = req.body;
+  
+  // Get business details
+  const business = await db.query(
+    'SELECT business_name, business_type, services FROM businesses WHERE id = $1',
+    [businessId]
+  );
+  
+  // Generate business-specific system prompt
+  const systemPrompt = generateSystemPrompt(
+    business.business_type,
+    business.business_name,
+    business.services || []
+  );
+  
+  // Call Groq with the business-specific prompt
+  const response = await groq.chat.completions.create({
+    model: "mixtral-8x7b-32768", // or your preferred model
+    messages: [
+      {
+        role: "system",
+        content: systemPrompt  // <-- NOW BUSINESS-SPECIFIC
+      },
+      {
+        role: "user",
+        content: userMessage
+      }
+    ],
+    max_tokens: 500,
+    temperature: 0.7
+  });
+  
+  res.json({ reply: response.choices[0].message.content });
+});
+```
+
+### STEP 6: Update Tenant Portal to Collect Business Context
+
+In your settings/onboarding flow, add fields for:
+- Business Type (dropdown: Restaurant, Dentist, Plumber, Salon, Other)
+- Services Offered (text array input)
+- Booking Duration (default 60 min)
+- Timezone (required)
+
+Store these in the database so the AI can use them.
+
+### STEP 7: Testing Requirements
+
+1. **Test restaurant chatbot:**
+   - User: "I want a reservation"
+   - Expected: AI asks "How many guests?" (restaurant-specific)
+   - Not: "What service do you need?" (generic)
+
+2. **Test dentist chatbot:**
+   - User: "I need an appointment"
+   - Expected: AI asks "What service? Cleaning/Root Canal?" (dentist-specific)
+   - Not: "How many people?" (wrong context)
+
+3. **Test prompt switching:**
+   - Same user message on different businesses should get different AI responses
+
+4. **Test personalization:**
+   - AI should mention business name: "Thanks for choosing Downtown Dental"
+   - Not: "Thanks for contacting us"
+
+5. **Test services:**
+   - If business only offers specific services, AI should only suggest those
+   - If customer asks for a service you don't offer, AI should redirect
+
+### STEP 8: Backwards Compatibility
+
+- Existing embed codes should still work (default to generic prompt if no context)
+- Old businesses without business_type should fall back to default prompt
+- New businesses should be prompted to add business_type on first login
+
+### DEPLOYMENT:
+- Add columns to businesses table
+- Deploy updated widget.js
+- Update embed code generation endpoint
+- Test with 3+ different business types
+- Update onboarding flow to ask for business type
+- Roll out gradually (existing customers can update settings anytime)
+
+All code should be production-ready with error handling and logging.

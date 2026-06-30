@@ -13,7 +13,8 @@ The chat widget prevents double-bookings by checking Google Calendar **before** 
 - Two logging tables (`availability_checks`, `booking_attempts`) record every check/attempt. `tenantId` is nullable because the chat can run tenant-less.
 
 ## Deliberate failure-mode tradeoffs (don't "fix" without intent)
-- **Chat booking flow fails OPEN**: if the calendar call throws, the booking still proceeds (logged loudly). **Why:** losing a real lead during a Calendar outage is worse for a small-business widget than a rare double-booking the owner can resolve manually.
+- **Fails CLOSED everywhere.** If the calendar can't be reached, the chat does NOT confirm the slot: it captures the lead (so it's not lost), logs the attempt with `available=null`, and tells the customer to call to confirm. No silent event creation.
+  **Why:** the product requirement is *prevent double-bookings*; silently confirming an unverifiable slot is exactly how double-bookings slip through. Initially built fail-OPEN to avoid losing leads, but both the architect review and the user explicitly chose fail-CLOSED. Lead is still captured, so the "don't lose the lead" goal is met without the double-booking risk.
 - **`POST /api/check-availability` fails CLOSED** (502): it's a pure availability query, so surfacing the error is correct.
 
 ## Known accepted limitation

@@ -153,7 +153,7 @@ function formatSlot(iso: string): string {
 async function logBookingAttempt(params: {
   booking: BookingDetails;
   tenantId?: string;
-  available: boolean;
+  available: boolean | null;
   bookingCreated: boolean;
   calendarEventId: string | null;
   suggestedTimes: string[];
@@ -253,10 +253,38 @@ router.post("/chat", async (req, res) => {
         suggestedTimes = await findNextAvailableSlots(booking.datetime, 4);
       }
     } catch (err) {
-      // Fail open: if the calendar can't be reached we don't block the booking,
-      // but log loudly so a calendar outage is visible.
-      req.log.error({ err, tenantId }, "Availability check failed — proceeding without it");
-      available = true;
+      // Fail CLOSED: if we can't reach the calendar we must NOT confirm a slot we
+      // couldn't verify (that's exactly how double-bookings slip through). Capture
+      // the lead so the owner can follow up manually, log the attempt, and tell the
+      // customer we couldn't confirm — never silently create the event.
+      req.log.error(
+        { err, tenantId },
+        "Availability check failed — calendar unreachable, not confirming booking",
+      );
+
+      if (tenantId) {
+        try {
+          await captureLead(booking, tenantId);
+        } catch (leadErr) {
+          req.log.error({ err: leadErr, tenantId }, "Lead capture failed during calendar outage");
+        }
+      }
+
+      await logBookingAttempt({
+        booking,
+        tenantId,
+        available: null, // unknown — calendar could not be reached
+        bookingCreated: false,
+        calendarEventId: null,
+        suggestedTimes: [],
+      });
+
+      res.json({
+        message:
+          "I'm having trouble checking our calendar availability right now, so I can't confirm this time just yet. Please call us to confirm your appointment, or try again in a few minutes — we've saved your details either way.",
+        bookingConfirmed: false,
+      });
+      return;
     }
 
     if (!available) {
