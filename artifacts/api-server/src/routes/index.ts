@@ -7,6 +7,7 @@ import webhooksRouter from "./webhooks";
 import embedRouter from "./embed";
 import reviewsRouter from "./reviews";
 import leadsRouter from "./leads";
+import emailsRouter from "./emails";
 import buyRouter from "./buy";
 import availabilityRouter from "./availability";
 
@@ -20,6 +21,7 @@ router.use(webhooksRouter);
 router.use("/admin", adminRouter);
 router.use(reviewsRouter);
 router.use(leadsRouter);
+router.use(emailsRouter);
 router.use(buyRouter);
 router.use(availabilityRouter);
 

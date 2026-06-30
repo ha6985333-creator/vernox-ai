@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import Groq from "groq-sdk";
 import { getBusinessType, getSystemPrompt } from "../businessTypes.js";
-import { sendConfirmationEmail, type BookingDetails } from "../lib/email.js";
+import { sendConfirmationEmail, sendBookingConfirmationToCustomer, type BookingDetails } from "../lib/email.js";
 import {
   addCalendarEvent,
   checkAvailability,
@@ -142,13 +142,13 @@ async function captureLead(
   booking: BookingDetails,
   tenantId: string,
   transcript?: string,
-): Promise<void> {
+): Promise<string | null> {
   const now = new Date();
   const firstFollowUp = new Date(now.getTime() + 2 * 60 * 60 * 1000);
 
   const preferredDatetime = booking.datetime ? new Date(booking.datetime) : undefined;
 
-  await db.insert(leadsTable).values({
+  const [lead] = await db.insert(leadsTable).values({
     tenantId,
     visitorName: booking.name,
     visitorEmail: booking.email,
@@ -159,7 +159,9 @@ async function captureLead(
     conversationTranscript: transcript ?? null,
     status: "new",
     nextFollowUpDate: firstFollowUp,
-  });
+  }).returning({ id: leadsTable.id });
+
+  return lead?.id ?? null;
 }
 
 // ── Availability helpers ──────────────────────────────────────────────────────
@@ -228,6 +230,8 @@ router.post("/chat", async (req, res) => {
     // tailored questions and the availability checks use the right hours/tz.
     let businessTypeValue: string | undefined;
     let businessName: string | undefined;
+    let businessPhone: string | null = null;
+    let businessAddress: string | null = null;
     let services: string[] | undefined;
     let businessDescription: string | undefined;
     let businessHours: BusinessHours | undefined;
@@ -240,6 +244,8 @@ router.post("/chat", async (req, res) => {
       if (tenant) {
         businessTypeValue = tenant.businessType;
         businessName = tenant.businessName ?? undefined;
+        businessPhone = tenant.businessPhone ?? null;
+        businessAddress = tenant.businessAddress ?? null;
         services = tenant.services ?? undefined;
         businessDescription = tenant.businessDescription ?? undefined;
         businessHours = tenant.businessHours ?? undefined;
@@ -358,6 +364,7 @@ router.post("/chat", async (req, res) => {
     // ── Slot is free — run side-effects with full error tracking ──
     const bookingResults = {
       confirmationEmail: { sent: false, error: null as string | null },
+      customerEmail:     { sent: false, error: null as string | null },
       calendarEvent:     { created: false, error: null as string | null },
       leadCaptured:      { ok: false, error: null as string | null },
     };
@@ -390,15 +397,30 @@ router.post("/chat", async (req, res) => {
       );
     }
 
+    let capturedLeadId: string | null = null;
     if (tenantId) {
       try {
-        await captureLead(booking, tenantId, formatTranscript(messages, clean));
+        capturedLeadId = await captureLead(booking, tenantId, formatTranscript(messages, clean));
         bookingResults.leadCaptured.ok = true;
       } catch (err) {
         const error = err as Error;
         bookingResults.leadCaptured.error = error.message;
         req.log.error({ err: error, tenantId }, "Lead capture failed");
       }
+
+      // Send the customer their booking confirmation (never throws). Logged to
+      // email_logs so the tenant portal can show delivery status.
+      const customerResult = await sendBookingConfirmationToCustomer({
+        booking,
+        whenText: formatSlot(booking.datetime, timeZone),
+        tenantId,
+        leadId: capturedLeadId,
+        businessName: businessName ?? null,
+        businessPhone,
+        businessAddress,
+      });
+      bookingResults.customerEmail.sent = customerResult.success;
+      bookingResults.customerEmail.error = customerResult.error ?? null;
     }
 
     // ── Monitoring: alert if any critical step failed ─────────────
@@ -418,6 +440,7 @@ router.post("/chat", async (req, res) => {
         {
           bookingEmail: booking.email,
           confirmationEmail: bookingResults.confirmationEmail.sent,
+          customerEmail: bookingResults.customerEmail.sent,
           calendarEvent: bookingResults.calendarEvent.created,
         },
         "Booking captured successfully",

@@ -15,6 +15,8 @@ export interface CreateTenantInput {
   bookingDurationMinutes?: number;
   timezone?: string;
   businessDescription?: string;
+  businessPhone?: string;
+  businessAddress?: string;
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;
 }
@@ -35,6 +37,8 @@ export async function createTenantWithCredentials(input: CreateTenantInput) {
     bookingDurationMinutes: input.bookingDurationMinutes ?? 60,
     timezone: input.timezone?.trim() || null,
     businessDescription: input.businessDescription?.trim() || null,
+    businessPhone: input.businessPhone?.trim() || null,
+    businessAddress: input.businessAddress?.trim() || null,
     stripeCustomerId: input.stripeCustomerId,
     stripeSubscriptionId: input.stripeSubscriptionId,
   }).returning();

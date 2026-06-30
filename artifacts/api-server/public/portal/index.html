@@ -187,6 +187,7 @@
   <div class="page">
     <nav class="tabnav">
       <button data-tab="leads" class="active">Leads</button>
+      <button data-tab="emails">Emails</button>
       <button data-tab="install">Install Widget</button>
     </nav>
 
@@ -198,6 +199,18 @@
 
       <div id="leadsContainer">
         <div class="empty-state"><p>Loading leads…</p></div>
+      </div>
+    </section>
+
+    <!-- ── Emails view ── -->
+    <section class="view" id="view-emails">
+      <div class="welcome">
+        <h1>Confirmation Emails</h1>
+        <p>Customers automatically receive a booking-confirmation email when they book through your chat widget. Track delivery here.</p>
+      </div>
+      <div class="stats-grid" id="emailStatsGrid"></div>
+      <div id="emailsContainer">
+        <div class="empty-state"><p>Loading emails…</p></div>
       </div>
     </section>
 
@@ -298,12 +311,18 @@
     }
 
     // ── Tab switching ──
+    let emailsLoaded = false;
     document.querySelectorAll(".tabnav button").forEach((btn) => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".tabnav button").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
         document.getElementById("view-" + btn.dataset.tab).classList.add("active");
+        if (btn.dataset.tab === "emails" && !emailsLoaded) {
+          emailsLoaded = true;
+          loadEmailStats();
+          loadEmails();
+        }
       });
     });
 
@@ -333,6 +352,95 @@
         card.append(num, lab);
         grid.appendChild(card);
       }
+    }
+
+    // ── Email tracking ──
+    async function loadEmailStats() {
+      const res = await fetch("/api/emails/stats", { credentials: "include" });
+      if (!res.ok) return;
+      const s = await res.json();
+      const grid = document.getElementById("emailStatsGrid");
+      grid.replaceChildren();
+      const cards = [
+        { n: s.total, l: "Total Emails" },
+        { n: s.sent, l: "Sent" },
+        { n: s.failed, l: "Failed" },
+        { n: s.skipped, l: "Skipped" },
+      ];
+      for (const c of cards) {
+        const card = document.createElement("div");
+        card.className = "stat-card";
+        const num = document.createElement("div");
+        num.className = "stat-number";
+        num.textContent = String(c.n ?? 0);
+        const lab = document.createElement("div");
+        lab.className = "stat-label";
+        lab.textContent = c.l;
+        card.append(num, lab);
+        grid.appendChild(card);
+      }
+    }
+
+    async function loadEmails() {
+      const container = document.getElementById("emailsContainer");
+      const res = await fetch("/api/emails", { credentials: "include" });
+      container.replaceChildren();
+      if (!res.ok) {
+        const e = document.createElement("div");
+        e.className = "empty-state";
+        const p = document.createElement("p");
+        p.textContent = "Could not load emails. Please refresh the page.";
+        e.appendChild(p);
+        container.appendChild(e);
+        return;
+      }
+      const emails = await res.json();
+      if (emails.length === 0) {
+        const e = document.createElement("div");
+        e.className = "empty-state";
+        const p = document.createElement("p");
+        p.textContent = "No emails sent yet. Confirmation emails appear here once customers book through your chat widget.";
+        e.appendChild(p);
+        container.appendChild(e);
+        return;
+      }
+      const list = document.createElement("div");
+      list.className = "leads-list";
+      for (const em of emails) {
+        list.appendChild(buildEmailCard(em));
+      }
+      container.appendChild(list);
+    }
+
+    function buildEmailCard(em) {
+      const card = document.createElement("div");
+      card.className = "lead-card";
+
+      const main = document.createElement("div");
+      main.className = "lead-main";
+      const name = document.createElement("div");
+      name.className = "lead-name";
+      name.textContent = em.subject || "(no subject)";
+      const sub = document.createElement("div");
+      sub.className = "lead-sub";
+      let subText = "To: " + (em.recipientEmail || "—");
+      if (em.status === "failed" && em.errorMessage) subText += " · " + em.errorMessage;
+      sub.textContent = subText;
+      main.append(name, sub);
+
+      const meta = document.createElement("div");
+      meta.className = "lead-meta";
+      const date = document.createElement("div");
+      date.className = "lead-date";
+      date.textContent = fmtDate(em.sentAt || em.createdAt);
+      const badge = document.createElement("span");
+      const cls = em.status === "sent" ? "converted" : em.status === "failed" ? "unsubscribed" : "new";
+      badge.className = "badge " + cls;
+      badge.textContent = em.status || "—";
+      meta.append(date, badge);
+
+      card.append(main, meta);
+      return card;
     }
 
     // ── Filter tabs ──

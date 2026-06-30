@@ -5,4 +5,4 @@
 - [drizzle-kit push hangs](drizzle-push-hang.md) — `pnpm --filter @workspace/db run push` blocks on an interactive prompt; apply additive dev schema changes via psql ALTER TABLE and keep the schema file in sync
 - [Booking availability check](booking-availability.md) — double-booking prevention uses Calendar freeBusy before event create; fails CLOSED everywhere (chat captures lead + asks customer to call; endpoint 502); known check-then-create race accepted at this scale
 - [Timezone-at-source parsing](timezone-at-source-parsing.md) — interpret zoneless booking datetimes in the tenant tz at parse time via toEpochMs(raw,tz); never new Date(raw).toISOString() first
-- [Lead transcript & portal](leads-portal-rendering.md) — chat stores conversation_transcript on lead capture; tenant portal renders ALL lead/customer fields via textContent/DOM, never innerHTML (stored-XSS sink)
+- [Lead transcript & portal](leads-portal-rendering.md) — chat stores conversation_transcript on lead capture; portal Leads+Emails tabs render ALL user fields via textContent/DOM, never innerHTML (stored-XSS sink); /api/emails recipient intentionally unmasked

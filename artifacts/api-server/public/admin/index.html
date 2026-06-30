@@ -174,6 +174,16 @@
         <select id="newType"></select>
       </div>
       <div class="field"><label>Business Name</label><input type="text" id="newBusinessName" placeholder="Acme Plumbing" /></div>
+      <div class="field-row">
+        <div class="field">
+          <label>Business Phone <span class="hint">(shown in confirmation emails)</span></label>
+          <input type="text" id="newBusinessPhone" placeholder="(555) 123-4567" />
+        </div>
+        <div class="field">
+          <label>Business Address <span class="hint">(shown in confirmation emails)</span></label>
+          <input type="text" id="newBusinessAddress" placeholder="12 Main St, Springfield" />
+        </div>
+      </div>
       <div class="field">
         <label>Business Description <span class="hint">(optional, shown to the bot)</span></label>
         <textarea id="newDescription" rows="2" placeholder="Family-run plumbing service operating across the metro area."></textarea>
@@ -365,7 +375,7 @@
       document.getElementById("modalError").style.display = "none";
       document.getElementById("modalTitle").textContent = "Add New Customer";
       document.getElementById("saveBtn").textContent = "Create Account";
-      ["newName","newEmail","newBusinessName","newDescription","newServices","newTimezone","newDuration"].forEach(id => setField(id, ""));
+      ["newName","newEmail","newBusinessName","newBusinessPhone","newBusinessAddress","newDescription","newServices","newTimezone","newDuration"].forEach(id => setField(id, ""));
       document.getElementById("newDuration").value = 60;
       document.getElementById("newPlan").value = "starter";
       document.getElementById("newType").selectedIndex = 0;
@@ -387,6 +397,8 @@
       document.getElementById("newPlan").value = t.plan || "starter";
       document.getElementById("newType").value = t.businessType || "general";
       setField("newBusinessName", t.businessName);
+      setField("newBusinessPhone", t.businessPhone);
+      setField("newBusinessAddress", t.businessAddress);
       setField("newDescription", t.businessDescription);
       setField("newServices", Array.isArray(t.services) ? t.services.join("\n") : "");
       setField("newTimezone", t.timezone);
@@ -405,6 +417,8 @@
       return {
         businessType: document.getElementById("newType").value,
         businessName: document.getElementById("newBusinessName").value.trim(),
+        businessPhone: document.getElementById("newBusinessPhone").value.trim(),
+        businessAddress: document.getElementById("newBusinessAddress").value.trim(),
         businessDescription: document.getElementById("newDescription").value.trim(),
         services,
         timezone: document.getElementById("newTimezone").value.trim(),

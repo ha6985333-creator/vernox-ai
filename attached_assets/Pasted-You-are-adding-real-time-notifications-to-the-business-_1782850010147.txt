@@ -1,0 +1,491 @@
+You are adding real-time notifications to the business owner. Right now when someone 
+books, they don't know. They only find out when they check the dashboard. This kills trust.
+
+CURRENT STATE:
+- Backend: Node.js/Express
+- Database: PostgreSQL
+- Booking system: Complete (creates leads, sends customer emails)
+- Slack/Email: Available
+
+THE PROBLEM:
+When a customer books an appointment:
+1. Calendar updates ✓
+2. Lead is created ✓
+3. Customer gets confirmation email ✓
+4. But the BUSINESS OWNER has NO IDEA it happened
+5. They might miss the booking or see it hours later
+6. Looks unprofessional
+
+YOUR TASK:
+Build a notification system that:
+1. Sends immediate email to business owner when booking happens
+2. (Optional) Sends Slack notification if they have Slack connected
+3. Includes booking details, lead score, customer info
+4. Tracks notification delivery
+5. Business owner can configure what triggers notifications
+
+IMPLEMENTATION REQUIREMENTS:
+
+### STEP 1: Create Notification Settings Table
+
+```sql
+CREATE TABLE notification_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID NOT NULL UNIQUE REFERENCES businesses(id) ON DELETE CASCADE,
+  
+  -- Email notifications
+  notification_email VARCHAR(255), -- Where to send notifications
+  email_enabled BOOLEAN DEFAULT true,
+  email_on_booking BOOLEAN DEFAULT true,
+  email_on_no_contact BOOLEAN DEFAULT false, -- If lead never confirms
+  
+  -- Slack notifications
+  slack_webhook_url TEXT, -- Optional Slack webhook
+  slack_enabled BOOLEAN DEFAULT false,
+  slack_on_booking BOOLEAN DEFAULT true,
+  slack_on_high_value BOOLEAN DEFAULT true, -- Only notify for quality_score > 75
+  
+  -- Quiet hours
+  quiet_hours_start TIME,
+  quiet_hours_end TIME,
+  quiet_days TEXT[], -- ['Saturday', 'Sunday']
+  
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE notification_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID NOT NULL REFERENCES businesses(id),
+  lead_id UUID NOT NULL REFERENCES leads(id),
+  notification_type VARCHAR(50), -- 'booking', 'no_contact', 'follow_up'
+  channel VARCHAR(50), -- 'email', 'slack'
+  status VARCHAR(50), -- 'sent', 'failed', 'skipped'
+  reason VARCHAR(255), -- Why it was skipped (e.g., 'quiet hours')
+  sent_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### STEP 2: Notification Service
+
+```javascript
+// backend/services/notificationService.js
+
+const { Resend } = require('resend');
+const axios = require('axios');
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+async function notifyBusinessOwner(businessId, leadData) {
+  try {
+    // 1. Get notification settings
+    const settings = await db.query(
+      'SELECT * FROM notification_settings WHERE business_id = $1',
+      [businessId]
+    );
+    
+    if (!settings.rows[0]) {
+      return { success: false, reason: 'No notification settings' };
+    }
+    
+    const notifSettings = settings.rows[0];
+    
+    // 2. Check if we should skip (quiet hours, weekend, etc.)
+    if (shouldSkipNotification(notifSettings, leadData)) {
+      await logNotification(businessId, leadData.id, 'email', 'skipped', 'quiet hours');
+      return { success: true, skipped: true };
+    }
+    
+    const results = [];
+    
+    // 3. Send email notification
+    if (notifSettings.email_enabled && notifSettings.email_on_booking) {
+      const emailResult = await sendOwnerEmailNotification(
+        businessId,
+        notifSettings.notification_email,
+        leadData
+      );
+      results.push(emailResult);
+    }
+    
+    // 4. Send Slack notification
+    if (notifSettings.slack_enabled && notifSettings.slack_webhook_url) {
+      if (notifSettings.slack_on_high_value && leadData.quality_score < 75) {
+        // Skip this lead (low quality)
+        await logNotification(businessId, leadData.id, 'slack', 'skipped', 'low quality score');
+      } else {
+        const slackResult = await sendSlackNotification(
+          notifSettings.slack_webhook_url,
+          leadData
+        );
+        results.push(slackResult);
+      }
+    }
+    
+    return { success: true, results };
+    
+  } catch (error) {
+    console.error('Notification error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function sendOwnerEmailNotification(businessId, ownerEmail, leadData) {
+  try {
+    const business = await db.query(
+      'SELECT business_name FROM businesses WHERE id = $1',
+      [businessId]
+    );
+    
+    const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .alert { background: #4CAF50; color: white; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+    .details { background: #f9f9f9; padding: 15px; border-left: 4px solid #2196F3; }
+    .quality-score { display: inline-block; padding: 8px 12px; border-radius: 20px; }
+    .quality-high { background: #4CAF50; color: white; }
+    .quality-medium { background: #FF9800; color: white; }
+    .quality-low { background: #f44336; color: white; }
+    .button { background: #2196F3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="alert">
+      <h2>🔔 New Booking!</h2>
+    </div>
+    
+    <div class="details">
+      <h3>${leadData.customer_name}</h3>
+      <p><strong>Email:</strong> ${leadData.customer_email}</p>
+      <p><strong>Phone:</strong> ${leadData.customer_phone}</p>
+      <p><strong>Service:</strong> ${leadData.requested_service}</p>
+      <p><strong>Date & Time:</strong> ${new Date(leadData.booked_datetime).toLocaleString()}</p>
+      
+      <p>
+        <span class="quality-score quality-${getQualityLevel(leadData.quality_score)}">
+          Quality: ${leadData.quality_score}/100
+        </span>
+      </p>
+    </div>
+    
+    <p>
+      <a href="https://vernoxai.digital/leads/${leadData.id}" class="button">
+        View Full Conversation
+      </a>
+    </p>
+  </div>
+</body>
+</html>
+    `;
+    
+    const response = await resend.emails.send({
+      from: 'Vernox AI <notifications@vernoxai.digital>',
+      to: ownerEmail,
+      subject: `🔔 New Booking from ${leadData.customer_name}`,
+      html: htmlBody
+    });
+    
+    await logNotification(businessId, leadData.id, 'email', 'sent');
+    
+    return { success: true, channel: 'email', messageId: response.id };
+  } catch (error) {
+    await logNotification(businessId, leadData.id, 'email', 'failed', error.message);
+    return { success: false, channel: 'email', error: error.message };
+  }
+}
+
+async function sendSlackNotification(webhookUrl, leadData) {
+  try {
+    const qualityColor = leadData.quality_score > 75 ? '#4CAF50' : 
+                         leadData.quality_score > 50 ? '#FF9800' : '#f44336';
+    
+    const slackMessage = {
+      text: `🔔 New Booking: ${leadData.customer_name}`,
+      attachments: [
+        {
+          color: qualityColor,
+          fields: [
+            {
+              title: 'Customer',
+              value: leadData.customer_name,
+              short: true
+            },
+            {
+              title: 'Phone',
+              value: leadData.customer_phone,
+              short: true
+            },
+            {
+              title: 'Service',
+              value: leadData.requested_service,
+              short: false
+            },
+            {
+              title: 'Appointment',
+              value: new Date(leadData.booked_datetime).toLocaleString(),
+              short: false
+            },
+            {
+              title: 'Lead Quality',
+              value: `${leadData.quality_score}/100`,
+              short: true
+            }
+          ],
+          actions: [
+            {
+              type: 'button',
+              text: 'View in Dashboard',
+              url: `https://vernoxai.digital/leads/${leadData.id}`
+            }
+          ]
+        }
+      ]
+    };
+    
+    await axios.post(webhookUrl, slackMessage);
+    
+    return { success: true, channel: 'slack' };
+  } catch (error) {
+    return { success: false, channel: 'slack', error: error.message };
+  }
+}
+
+function shouldSkipNotification(settings, leadData) {
+  // Check quiet hours
+  if (settings.quiet_hours_start && settings.quiet_hours_end) {
+    const now = new Date().toLocaleTimeString('en-US', { hour12: false });
+    if (now >= settings.quiet_hours_start && now <= settings.quiet_hours_end) {
+      return true;
+    }
+  }
+  
+  // Check quiet days
+  if (settings.quiet_days && settings.quiet_days.length > 0) {
+    const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+    if (settings.quiet_days.includes(today)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+function getQualityLevel(score) {
+  if (score > 75) return 'high';
+  if (score > 50) return 'medium';
+  return 'low';
+}
+
+async function logNotification(businessId, leadId, channel, status, reason = null) {
+  await db.query(
+    `INSERT INTO notification_logs 
+     (business_id, lead_id, channel, status, reason, sent_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())`,
+    [businessId, leadId, channel, status, reason]
+  );
+}
+
+module.exports = { notifyBusinessOwner };
+```
+
+### STEP 3: Update Booking Endpoint to Trigger Notifications
+
+```javascript
+// In your booking creation endpoint:
+
+const { notifyBusinessOwner } = require('../services/notificationService');
+
+app.post('/api/bookings/create', async (req, res) => {
+  // ... existing booking code ...
+  
+  // After lead is created and customer email is sent:
+  
+  // 4. NOTIFY BUSINESS OWNER (NEW)
+  const notificationResult = await notifyBusinessOwner(businessId, {
+    id: leadId,
+    customer_name: customerName,
+    customer_email: customerEmail,
+    customer_phone: customerPhone,
+    requested_service: requestedService,
+    booked_datetime: bookedDateTime,
+    quality_score: 50 // Calculate this based on conversation quality
+  });
+  
+  res.json({ 
+    success: true,
+    leadId,
+    notificationSent: notificationResult.success 
+  });
+});
+```
+
+### STEP 4: Slack Connection Setup Endpoint
+
+```javascript
+// backend/routes/integrations.js
+
+app.post('/api/integrations/slack/connect', authenticateUser, async (req, res) => {
+  const { businessId, slackWebhookUrl } = req.body;
+  
+  // Test webhook
+  try {
+    await axios.post(slackWebhookUrl, { text: '✅ Vernox AI Slack integration connected!' });
+  } catch (error) {
+    return res.status(400).json({ error: 'Invalid Slack webhook URL' });
+  }
+  
+  // Save webhook
+  await db.query(
+    'UPDATE notification_settings SET slack_webhook_url = $1, slack_enabled = true WHERE business_id = $2',
+    [slackWebhookUrl, businessId]
+  );
+  
+  res.json({ success: true });
+});
+
+app.get('/api/integrations/slack/disconnect', authenticateUser, async (req, res) => {
+  const { businessId } = req.query;
+  
+  await db.query(
+    'UPDATE notification_settings SET slack_webhook_url = NULL, slack_enabled = false WHERE business_id = $1',
+    [businessId]
+  );
+  
+  res.json({ success: true });
+});
+```
+
+### STEP 5: Notification Settings UI
+
+```jsx
+// frontend/pages/NotificationSettings.jsx
+
+export default function NotificationSettings() {
+  const [email, setEmail] = useState('');
+  const [slackWebhook, setSlackWebhook] = useState('');
+  const [quietHours, setQuietHours] = useState({ start: null, end: null });
+  
+  const handleSaveNotifications = async () => {
+    await fetch(`/api/notification-settings/${businessId}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        notification_email: email,
+        quiet_hours_start: quietHours.start,
+        quiet_hours_end: quietHours.end
+      })
+    });
+    alert('Notification settings saved!');
+  };
+  
+  const handleConnectSlack = async () => {
+    // Redirect to Slack OAuth or show webhook input
+    const webhook = prompt('Paste your Slack webhook URL:');
+    if (webhook) {
+      const result = await fetch('/api/integrations/slack/connect', {
+        method: 'POST',
+        body: JSON.stringify({ businessId, slackWebhookUrl: webhook })
+      });
+      
+      if (result.ok) {
+        alert('Slack connected!');
+        setSlackWebhook(webhook);
+      } else {
+        alert('Invalid webhook URL');
+      }
+    }
+  };
+  
+  return (
+    <div className="notification-settings">
+      <h2>Notification Settings</h2>
+      
+      {/* Email Settings */}
+      <section>
+        <h3>Email Notifications</h3>
+        <label>
+          <input 
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="owner@business.com"
+          />
+          <span>Where to send booking notifications</span>
+        </label>
+      </section>
+      
+      {/* Slack Settings */}
+      <section>
+        <h3>Slack Notifications</h3>
+        {slackWebhook ? (
+          <>
+            <p>✅ Slack connected</p>
+            <button onClick={() => { /* disconnect */ }}>Disconnect</button>
+          </>
+        ) : (
+          <button onClick={handleConnectSlack}>Connect Slack</button>
+        )}
+      </section>
+      
+      {/* Quiet Hours */}
+      <section>
+        <h3>Quiet Hours</h3>
+        <label>
+          <span>No notifications between:</span>
+          <input 
+            type="time"
+            value={quietHours.start || ''}
+            onChange={(e) => setQuietHours({ ...quietHours, start: e.target.value })}
+          />
+          <span>and</span>
+          <input 
+            type="time"
+            value={quietHours.end || ''}
+            onChange={(e) => setQuietHours({ ...quietHours, end: e.target.value })}
+          />
+        </label>
+      </section>
+      
+      <button onClick={handleSaveNotifications}>Save Notification Settings</button>
+    </div>
+  );
+}
+```
+
+### STEP 6: Testing Requirements
+
+1. **Test email notification:**
+   - Complete a booking
+   - Verify owner gets email
+   - Verify email has booking details
+
+2. **Test Slack notification:**
+   - Connect Slack webhook
+   - Complete a booking
+   - Verify message appears in Slack channel
+
+3. **Test quiet hours:**
+   - Set quiet hours 9 PM - 7 AM
+   - Try booking after 9 PM
+   - Verify notification is skipped
+   - Log shows 'skipped' reason
+
+4. **Test quality filter:**
+   - Create a low-quality lead (score < 50)
+   - Set Slack to only notify high-quality
+   - Verify Slack notification is skipped but email still sent
+
+### STEP 7: Deployment
+
+- Create notification tables
+- Deploy notificationService.js
+- Update booking endpoint to call notifyBusinessOwner
+- Deploy notification settings UI
+- Test full flow: booking → email sent → Slack notification sent
+
+All code should be production-ready with error handling.

@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { db, emailLogsTable } from "@workspace/db";
 import { logger } from "./logger.js";
 import { BUSINESS_TYPE, BUSINESS_NAME, BUSINESS_EMAIL } from "../config.js";
 import type { Lead } from "@workspace/db";
@@ -72,6 +73,157 @@ export async function sendConfirmationEmail(booking: BookingDetails): Promise<vo
 
   if (error) logger.error({ error }, "Failed to send booking notification email");
   else logger.info({ to }, "Booking notification sent to business owner");
+}
+
+export interface CustomerConfirmationInput {
+  booking: BookingDetails;
+  /** Pre-formatted appointment date/time in the tenant's timezone. */
+  whenText: string;
+  /** Tenant context for the email body + log scoping. */
+  tenantId: string;
+  leadId: string | null;
+  businessName: string | null;
+  businessPhone: string | null;
+  businessAddress: string | null;
+  /** Where the customer should reply for help (falls back to platform email). */
+  replyTo?: string | null;
+}
+
+export interface SendResult {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+}
+
+function esc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function logEmail(row: {
+  tenantId: string;
+  leadId: string | null;
+  templateType: string;
+  recipientEmail: string;
+  subject: string;
+  status: "sent" | "failed" | "skipped";
+  resendMessageId?: string | null;
+  errorMessage?: string | null;
+}): Promise<void> {
+  try {
+    await db.insert(emailLogsTable).values({
+      tenantId: row.tenantId,
+      leadId: row.leadId,
+      templateType: row.templateType,
+      recipientEmail: row.recipientEmail,
+      subject: row.subject,
+      status: row.status,
+      resendMessageId: row.resendMessageId ?? null,
+      errorMessage: row.errorMessage ?? null,
+      sentAt: row.status === "sent" ? new Date() : null,
+    });
+  } catch (err) {
+    logger.error({ err, tenantId: row.tenantId }, "Failed to write email_logs row");
+  }
+}
+
+/**
+ * Send a booking-confirmation email to the CUSTOMER and record the outcome in
+ * email_logs. All outcomes (sent / failed / skipped) are logged so the tenant
+ * portal can show delivery status. Never throws — booking flow must not break if
+ * email fails. NOTE: until a domain is verified at resend.com/domains and
+ * FROM_EMAIL is set, Resend only delivers to the account owner's own address;
+ * other recipients fail with 403 and are logged as "failed".
+ */
+export async function sendBookingConfirmationToCustomer(
+  input: CustomerConfirmationInput,
+): Promise<SendResult> {
+  const { booking, whenText, tenantId, leadId } = input;
+  const bizName = input.businessName?.trim() || BUSINESS_NAME;
+  const subject = `Booking confirmed at ${bizName}`;
+
+  const resend = getResend();
+  if (!resend) {
+    logger.warn("RESEND_API_KEY not set — skipping customer confirmation");
+    await logEmail({
+      tenantId, leadId, templateType: "booking_confirmation",
+      recipientEmail: booking.email, subject, status: "skipped",
+      errorMessage: "RESEND_API_KEY not set",
+    });
+    return { success: false, error: "RESEND_API_KEY not set" };
+  }
+
+  const contactRows: string[] = [];
+  if (input.businessPhone?.trim()) {
+    contactRows.push(
+      `<tr><td style="padding:8px 0;color:#6b7280;width:38%;">Phone</td><td style="padding:8px 0;color:#111827;font-weight:600;">${esc(input.businessPhone.trim())}</td></tr>`,
+    );
+  }
+  if (input.businessAddress?.trim()) {
+    contactRows.push(
+      `<tr><td style="padding:8px 0;color:#6b7280;">Location</td><td style="padding:8px 0;color:#111827;font-weight:600;">${esc(input.businessAddress.trim())}</td></tr>`,
+    );
+  }
+  const helpLine = input.businessPhone?.trim()
+    ? `call us at <strong>${esc(input.businessPhone.trim())}</strong> or reply to this email`
+    : `reply to this email`;
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#f9fafb;border-radius:12px;">
+      <div style="background:#4f46e5;border-radius:8px;padding:24px;text-align:center;margin-bottom:24px;">
+        <h1 style="color:#fff;margin:0;font-size:1.5rem;">Booking Confirmed!</h1>
+        <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:0.9rem;">${esc(bizName)}</p>
+      </div>
+      <p style="color:#374151;">Hi ${esc(booking.name)},</p>
+      <p style="color:#374151;margin-top:8px;">Thank you for booking with <strong>${esc(bizName)}</strong>. Your appointment is confirmed.</p>
+      <div style="background:#fff;border:1px solid #e5e7eb;border-left:4px solid #4f46e5;border-radius:8px;padding:18px 20px;margin:20px 0;">
+        <h3 style="margin:0 0 12px;color:#111827;font-size:1rem;">Appointment Details</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:0.95rem;">
+          <tr><td style="padding:8px 0;color:#6b7280;width:38%;">Date &amp; Time</td><td style="padding:8px 0;color:#111827;font-weight:600;">${esc(whenText)}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;">Service</td><td style="padding:8px 0;color:#111827;font-weight:600;">${esc(booking.issue)}</td></tr>
+          ${contactRows.join("")}
+        </table>
+      </div>
+      <p style="color:#374151;">We look forward to seeing you! Need to reschedule or cancel? Just ${helpLine}.</p>
+      <p style="color:#9ca3af;font-size:0.8rem;margin-top:24px;">Tip: add this appointment to your calendar so you don't forget.</p>
+      <p style="color:#9ca3af;font-size:0.8rem;">— ${esc(bizName)}</p>
+    </div>`;
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: booking.email,
+      replyTo: input.replyTo?.trim() || BUSINESS_EMAIL || undefined,
+      subject,
+      html,
+    });
+    if (error) {
+      const msg = (error as { message?: string }).message ?? String(error);
+      logger.error({ error, to: booking.email }, "Customer confirmation email failed");
+      await logEmail({
+        tenantId, leadId, templateType: "booking_confirmation",
+        recipientEmail: booking.email, subject, status: "failed", errorMessage: msg,
+      });
+      return { success: false, error: msg };
+    }
+    await logEmail({
+      tenantId, leadId, templateType: "booking_confirmation",
+      recipientEmail: booking.email, subject, status: "sent", resendMessageId: data?.id ?? null,
+    });
+    logger.info({ to: booking.email, messageId: data?.id }, "Customer confirmation email sent");
+    return { success: true, messageId: data?.id };
+  } catch (err) {
+    const msg = (err as Error).message;
+    logger.error({ err, to: booking.email }, "Customer confirmation email threw");
+    await logEmail({
+      tenantId, leadId, templateType: "booking_confirmation",
+      recipientEmail: booking.email, subject, status: "failed", errorMessage: msg,
+    });
+    return { success: false, error: msg };
+  }
 }
 
 export async function sendCredentialsEmail(input: CredentialsEmailInput): Promise<void> {

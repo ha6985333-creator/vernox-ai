@@ -37,10 +37,10 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 - `artifacts/api-server/src/config.ts` — platform-level fallback business type + AI system prompt (used by email/reviews)
 - `artifacts/api-server/src/businessTypes.ts` — registry of ~21 selectable business types + `getSystemPrompt(type,name)` for per-tenant tailored chat prompts
 - `artifacts/api-server/src/app.ts` — Express app + middleware
-- `artifacts/api-server/src/routes/` — auth, admin, chat, webhooks
+- `artifacts/api-server/src/routes/` — auth, admin, chat, emails, webhooks
 - `artifacts/api-server/src/lib/` — auth helpers, email, accounts, logger
 - `artifacts/api-server/public/` — static frontend files
-- `lib/db/src/schema/` — tenants + users Drizzle tables
+- `lib/db/src/schema/` — tenants (incl. `businessPhone`/`businessAddress`) + users + `email_logs` Drizzle tables
 
 ## Pages
 
@@ -50,7 +50,7 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 | `/buy` | "Buy Now" page — lead capture form (name/business/email/phone) → on submit reveals thank-you steps; team contacts buyer with payment link, then credentials |
 | `/login` | Login page for admin + tenants |
 | `/admin` | Master admin dashboard (admin only) |
-| `/portal` | Tenant landing page after login |
+| `/portal` | Tenant landing page after login (Leads, Emails, Install Widget tabs) |
 
 ## API Routes
 
@@ -68,12 +68,15 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 | GET | `/api/admin/stats` | admin | Stats counters |
 | GET | `/api/admin/purchase-requests` | admin | List all sale requests |
 | PATCH | `/api/admin/purchase-requests/:id/status` | admin | Set status (new/contacted/paid/closed) |
+| GET | `/api/emails` | tenant | List this tenant's confirmation-email log (limit 50, newest first) |
+| GET | `/api/emails/stats` | tenant | Counts grouped by status (`{total,sent,failed,skipped}`) |
 | POST | `/api/webhooks/payoneer` | public | Payoneer IPN (auto-provision) |
 
 ## Product
 
 - **Chat widget**: AI-powered lead qualification + appointment booking. The bot is **multipurpose** — each tenant has a `businessType` (set when the admin creates the customer) and the chat handler builds a tailored system prompt via `getSystemPrompt()` so it asks industry-appropriate qualifying questions (e.g. restaurant → party size + date/time, no service address). Non-visit business types skip the address requirement. Tenants without a type default to `general`. The `config.ts` `SYSTEM_PROMPT` is now only a platform-level fallback (email/reviews).
 - **Booking detection**: When AI detects a completed booking it emits `BOOKING_COMPLETE::{}`, triggering a green confirmation banner and sending a notification email.
+- **Customer confirmation emails**: On a completed booking the chat also emails the **customer** a professional HTML confirmation (appointment date/time, business name + phone + address, "reply or call to reschedule/cancel" CTA) via `sendBookingConfirmationToCustomer()`. Every send is logged to `email_logs` (status `sent`/`failed`/`skipped`); the function never throws so a delivery failure can't break the booking. Tenants view the log + counts in the portal **Emails** tab. NOTE: with no verified Resend domain, customer emails to non-owner addresses fail (403) and are logged as `failed` — verify a domain at resend.com/domains and set `FROM_EMAIL` to deliver to real customers.
 - **Double-booking prevention**: Before confirming a booking or creating a calendar event, the chat checks the slot against Google Calendar (`freeBusy`). If the slot is taken, the booking is blocked and the bot offers the next open times (Mon–Fri 9–5, scanning 30 days). If the calendar is unreachable, the chat fails **closed** — it captures the lead, declines to confirm, and asks the customer to call. Every attempt is logged to `booking_attempts`. The standalone `POST /api/check-availability` endpoint exposes the same check. Logging tables: `availability_checks`, `booking_attempts`.
 - **Admin dashboard**: Master admin can view all customers, create accounts manually, suspend/activate tenants, and review/triage incoming sale requests.
 - **Sale notifications**: The `/buy` form POSTs to `/api/buy` → saves a `purchase_requests` row, emails the owner (NOTIFY_EMAIL) a notification, and emails the customer a confirmation. Each request shows in the admin "Sale Requests" table with a status dropdown (new/contacted/paid/closed) and a "New Sale Requests" stat card.

@@ -32,3 +32,13 @@ authenticated portal session.
 literal markup (e.g. a hard-coded empty-state SVG icon). Any value that could
 contain user data must go through `textContent`. This mirrors the same rule already
 documented for the admin dashboard.
+
+## Emails tab + email_logs
+The portal also has an **Emails** tab (lazy-loaded on first click) showing
+customer booking-confirmation delivery from `email_logs`, via tenant-scoped
+`GET /api/emails` + `/api/emails/stats`. Same `textContent`/`createElement` rule
+applies (recipient email, subject, error message are all rendered as text).
+
+**Recipient email is intentionally NOT masked** in `/api/emails`: the tenant owns
+this lead data and the Leads tab already shows full visitor emails, so masking the
+log would be inconsistent and stop them identifying which customer was emailed.

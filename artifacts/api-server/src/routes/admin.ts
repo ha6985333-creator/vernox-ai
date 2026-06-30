@@ -18,6 +18,8 @@ interface TenantSettings {
   bookingDurationMinutes?: number;
   timezone?: string;
   businessDescription?: string;
+  businessPhone?: string;
+  businessAddress?: string;
 }
 
 /**
@@ -77,6 +79,18 @@ function parseTenantSettings(body: Record<string, unknown>): TenantSettings {
     const desc = String(body.businessDescription ?? "").trim();
     if (desc.length > 500) throw new Error("businessDescription must be 500 characters or fewer");
     out.businessDescription = desc;
+  }
+
+  if (body.businessPhone !== undefined) {
+    const phone = String(body.businessPhone ?? "").trim();
+    if (phone.length > 50) throw new Error("businessPhone must be 50 characters or fewer");
+    out.businessPhone = phone;
+  }
+
+  if (body.businessAddress !== undefined) {
+    const addr = String(body.businessAddress ?? "").trim();
+    if (addr.length > 255) throw new Error("businessAddress must be 255 characters or fewer");
+    out.businessAddress = addr;
   }
 
   return out;
@@ -173,6 +187,8 @@ router.patch("/tenants/:id", async (req, res) => {
   if (settings.bookingDurationMinutes !== undefined) updates.bookingDurationMinutes = settings.bookingDurationMinutes;
   if (settings.timezone !== undefined) updates.timezone = settings.timezone || null;
   if (settings.businessDescription !== undefined) updates.businessDescription = settings.businessDescription || null;
+  if (settings.businessPhone !== undefined) updates.businessPhone = settings.businessPhone || null;
+  if (settings.businessAddress !== undefined) updates.businessAddress = settings.businessAddress || null;
 
   if (Object.keys(updates).length === 0) { res.json({ tenant: existing }); return; }
 

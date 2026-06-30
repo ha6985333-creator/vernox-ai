@@ -36,6 +36,9 @@ export const tenantsTable = pgTable("tenants", {
   timezone: text("timezone"),
   // Short free-text description added as context to the AI prompt.
   businessDescription: text("business_description"),
+  // Public contact details shown to customers in booking-confirmation emails.
+  businessPhone: text("business_phone"),
+  businessAddress: text("business_address"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
