@@ -69,6 +69,18 @@ const buyLimiter = rateLimit({
 });
 app.use("/api/buy", buyLimiter);
 
+// Rate limit the public availability checker — 20/minute per IP.
+// It's unauthenticated and queries the Google Calendar freeBusy API, so cap it
+// to prevent calendar-occupancy probing and API-cost amplification.
+const availabilityLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please wait a moment and try again." },
+});
+app.use("/api/check-availability", availabilityLimiter);
+
 app.use("/api", router);
 
 export default app;

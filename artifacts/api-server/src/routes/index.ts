@@ -8,6 +8,7 @@ import embedRouter from "./embed";
 import reviewsRouter from "./reviews";
 import leadsRouter from "./leads";
 import buyRouter from "./buy";
+import availabilityRouter from "./availability";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use("/admin", adminRouter);
 router.use(reviewsRouter);
 router.use(leadsRouter);
 router.use(buyRouter);
+router.use(availabilityRouter);
 
 export default router;

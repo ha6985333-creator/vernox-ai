@@ -2,9 +2,14 @@ import { Router, type IRouter } from "express";
 import Groq from "groq-sdk";
 import { getBusinessType, getSystemPrompt } from "../businessTypes.js";
 import { sendConfirmationEmail, type BookingDetails } from "../lib/email.js";
-import { addCalendarEvent } from "../lib/calendar.js";
+import {
+  addCalendarEvent,
+  checkAvailability,
+  findNextAvailableSlots,
+  SERVER_TIMEZONE,
+} from "../lib/calendar.js";
 import { db } from "@workspace/db";
-import { leadsTable } from "@workspace/db";
+import { leadsTable, bookingAttemptsTable } from "@workspace/db";
 import { parseBookingDatetime } from "../lib/dateParser.js";
 import { logger } from "../lib/logger.js";
 
@@ -127,6 +132,50 @@ async function captureLead(booking: BookingDetails, tenantId: string): Promise<v
   });
 }
 
+// ── Availability helpers ──────────────────────────────────────────────────────
+
+/** Human-friendly rendering of an ISO slot, e.g. "Tue, Jul 14, 2:00 PM EDT". */
+function formatSlot(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: SERVER_TIMEZONE,
+    timeZoneName: "short",
+  }).format(d);
+}
+
+/** Best-effort log of a booking attempt; never throws. */
+async function logBookingAttempt(params: {
+  booking: BookingDetails;
+  tenantId?: string;
+  available: boolean;
+  bookingCreated: boolean;
+  calendarEventId: string | null;
+  suggestedTimes: string[];
+}): Promise<void> {
+  try {
+    await db.insert(bookingAttemptsTable).values({
+      tenantId: params.tenantId ?? null,
+      customerName: params.booking.name,
+      customerEmail: params.booking.email,
+      customerPhone: params.booking.phone,
+      requestedDatetime: new Date(params.booking.datetime),
+      timezone: SERVER_TIMEZONE,
+      available: params.available,
+      suggestedTimes: params.suggestedTimes,
+      bookingCreated: params.bookingCreated,
+      calendarEventId: params.calendarEventId,
+    });
+  } catch (err) {
+    logger.warn({ err }, "Failed to log booking attempt");
+  }
+}
+
 // ── Chat route ────────────────────────────────────────────────────────────────
 
 router.post("/chat", async (req, res) => {
@@ -191,9 +240,46 @@ router.post("/chat", async (req, res) => {
       return;
     }
 
-    // ── Booking detected — run side-effects with full error tracking ──
+    // ── Booking detected ──────────────────────────────────────────
     const booking = result.booking;
 
+    // ── Availability check — prevent double-bookings ──────────────
+    // Verify the slot is still open BEFORE confirming or creating an event.
+    let available = true;
+    let suggestedTimes: string[] = [];
+    try {
+      available = await checkAvailability(booking.datetime);
+      if (!available) {
+        suggestedTimes = await findNextAvailableSlots(booking.datetime, 4);
+      }
+    } catch (err) {
+      // Fail open: if the calendar can't be reached we don't block the booking,
+      // but log loudly so a calendar outage is visible.
+      req.log.error({ err, tenantId }, "Availability check failed — proceeding without it");
+      available = true;
+    }
+
+    if (!available) {
+      await logBookingAttempt({
+        booking,
+        tenantId,
+        available: false,
+        bookingCreated: false,
+        calendarEventId: null,
+        suggestedTimes,
+      });
+
+      const message = suggestedTimes.length
+        ? `Unfortunately ${formatSlot(booking.datetime)} is no longer available. Here are the next open times:\n${suggestedTimes
+            .map((s) => `• ${formatSlot(s)}`)
+            .join("\n")}\n\nWhich of these works best for you?`
+        : `Unfortunately ${formatSlot(booking.datetime)} is no longer available, and I couldn't find an open slot in the next 30 days. Could you suggest another time?`;
+
+      res.json({ message, bookingConfirmed: false, suggestedTimes });
+      return;
+    }
+
+    // ── Slot is free — run side-effects with full error tracking ──
     const bookingResults = {
       confirmationEmail: { sent: false, error: null as string | null },
       calendarEvent:     { created: false, error: null as string | null },
@@ -212,9 +298,13 @@ router.post("/chat", async (req, res) => {
       );
     }
 
+    let calendarEventId: string | null = null;
     try {
-      await addCalendarEvent(booking);
-      bookingResults.calendarEvent.created = true;
+      calendarEventId = await addCalendarEvent(booking);
+      bookingResults.calendarEvent.created = calendarEventId !== null;
+      if (calendarEventId === null) {
+        bookingResults.calendarEvent.error = "Calendar API did not return an event id";
+      }
     } catch (err) {
       const error = err as Error;
       bookingResults.calendarEvent.error = error.message;
@@ -257,6 +347,15 @@ router.post("/chat", async (req, res) => {
         "Booking captured successfully",
       );
     }
+
+    await logBookingAttempt({
+      booking,
+      tenantId,
+      available: true,
+      bookingCreated: bookingResults.calendarEvent.created,
+      calendarEventId,
+      suggestedTimes: [],
+    });
 
     // ── Respond — NEVER echo back PII ────────────────────────────
     // Do NOT include: email, phone, address, or bookingResults detail in the response

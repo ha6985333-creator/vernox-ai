@@ -1,0 +1,96 @@
+You are building a critical feature for Vernox AI, a Node.js/Express appointment booking 
+platform. This feature prevents double-bookings by checking Google Calendar availability 
+before the AI confirms any appointment.
+
+CURRENT STATE:
+- Backend: Node.js/Express
+- Database: PostgreSQL via Supabase
+- AI integration: Groq API
+- Calendar: Google Calendar API (already integrated)
+- Frontend: React (tenant portal)
+
+THE PROBLEM:
+Right now, the AI chatbot can book appointments without checking if that time slot is 
+already taken. This causes double-bookings and destroys customer trust.
+
+YOUR TASK:
+Build an availability-checking system that:
+1. Checks Google Calendar before confirming any booking
+2. Suggests alternative times if the requested slot is booked
+3. Integrates seamlessly with the existing AI prompt
+4. Is fast (<500ms response time)
+
+IMPLEMENTATION REQUIREMENTS:
+
+### STEP 1: Create Database Schema for Booking Attempts & Logs
+Add these tables to Supabase:
+
+```sql
+-- Track all booking attempts for debugging
+CREATE TABLE booking_attempts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID NOT NULL REFERENCES businesses(id),
+  customer_name VARCHAR(255),
+  customer_email VARCHAR(255),
+  customer_phone VARCHAR(20),
+  requested_datetime TIMESTAMP NOT NULL,
+  timezone VARCHAR(100),
+  available BOOLEAN,
+  suggested_times TEXT[], -- Array of alternative times offered
+  booking_created BOOLEAN DEFAULT false,
+  calendar_event_id VARCHAR(255),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Track availability check responses
+CREATE TABLE availability_checks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID NOT NULL REFERENCES businesses(id),
+  checked_datetime TIMESTAMP NOT NULL,
+  timezone VARCHAR(100),
+  is_available BOOLEAN,
+  checked_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### STEP 2: Create the Availability Check Endpoint
+
+Build a new Node.js/Express endpoint `/api/check-availability` that:
+
+1. Takes in: businessId, requestedDateTime (ISO string), timezone
+2. Queries Google Calendar for that business
+3. Checks if the time slot is free (60-minute window)
+4. If booked: returns available: false + 3-5 suggested alternative slots
+5. If free: returns available: true
+6. Logs the check attempt for debugging
+
+Requirements:
+- Use the existing Google Calendar integration (already in your code)
+- Get the business's google_calendar_id from the database
+- Handle timezone conversions (requested time may be in customer's timezone)
+- Return response in <500ms
+- Include error handling for Calendar API failures
+
+Response format:
+```json
+{
+  "available": true/false,
+  "requestedDateTime": "2026-07-15T09:00:00Z",
+  "suggestedTimes": ["2026-07-15T09:30:00Z", "2026-07-15T10:00:00Z", "2026-07-15T14:00:00Z"],
+  "timezone": "America/New_York"
+}
+```
+
+### STEP 3: Create findNextAvailableSlots() Helper Function
+
+When a requested time is booked, find the next N available slots.
+
+Requirements:
+- Takes: calendarId, number of slots to find (default 3), duration in minutes (default 60)
+- Searches the next 30 days starting from the requested datetime
+- Returns array of available 60-minute slots
+- Respects business hours if available (optional for now, can be enhanced later)
+- Skips weekends (customizable per business later)
+
+Example output:

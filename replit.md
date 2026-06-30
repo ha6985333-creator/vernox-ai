@@ -60,6 +60,7 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 | POST | `/api/auth/logout` | session | Logout |
 | GET | `/api/auth/me` | session | Current user |
 | POST | `/api/buy` | public | Submit Buy Now lead — saves `purchase_requests` row, emails owner + customer (rate-limited 5/hr per IP) |
+| POST | `/api/check-availability` | public | Check a Google Calendar slot — body `{requestedDateTime, timezone?, durationMinutes?, tenantId?}` → `{available, suggestedTimes, ...}`; logs to `availability_checks`; 502 on calendar failure (rate-limited 20/min per IP) |
 | GET | `/api/admin/tenants` | admin | List all tenants |
 | POST | `/api/admin/tenants` | admin | Manually create tenant (accepts `businessType`, `businessName`) |
 | GET | `/api/admin/business-types` | admin | List selectable business types (`{value,label}`) |
@@ -73,6 +74,7 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 
 - **Chat widget**: AI-powered lead qualification + appointment booking. The bot is **multipurpose** — each tenant has a `businessType` (set when the admin creates the customer) and the chat handler builds a tailored system prompt via `getSystemPrompt()` so it asks industry-appropriate qualifying questions (e.g. restaurant → party size + date/time, no service address). Non-visit business types skip the address requirement. Tenants without a type default to `general`. The `config.ts` `SYSTEM_PROMPT` is now only a platform-level fallback (email/reviews).
 - **Booking detection**: When AI detects a completed booking it emits `BOOKING_COMPLETE::{}`, triggering a green confirmation banner and sending a notification email.
+- **Double-booking prevention**: Before confirming a booking or creating a calendar event, the chat checks the slot against Google Calendar (`freeBusy`). If the slot is taken, the booking is blocked and the bot offers the next open times (Mon–Fri 9–5, scanning 30 days); the attempt is logged to `booking_attempts`. The standalone `POST /api/check-availability` endpoint exposes the same check. Logging tables: `availability_checks`, `booking_attempts`.
 - **Admin dashboard**: Master admin can view all customers, create accounts manually, suspend/activate tenants, and review/triage incoming sale requests.
 - **Sale notifications**: The `/buy` form POSTs to `/api/buy` → saves a `purchase_requests` row, emails the owner (NOTIFY_EMAIL) a notification, and emails the customer a confirmation. Each request shows in the admin "Sale Requests" table with a status dropdown (new/contacted/paid/closed) and a "New Sale Requests" stat card.
 - **Auto-provisioning**: Payoneer IPN webhook at `/api/webhooks/payoneer` — when a payment completes, a tenant account is created and credentials are emailed automatically.
@@ -83,6 +85,8 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 - Admin seeded on startup via `ensureAdminUser()` — idempotent, safe to run repeatedly
 - Duplicate-safe IPN handler — if same payer email pays twice, second provision is silently skipped
 - Payoneer IPN responds with plain-text `OK` as required by the Payoneer spec
+- Availability check fails **open** in the chat flow (calendar outage → booking still proceeds, logged) to avoid losing leads; the `/api/check-availability` endpoint fails **closed** (502) since it's a pure query
+- Known accepted limitation: check-then-create is not atomic, so concurrent requests for the same slot could both pass. Acceptable at single-business scale; would need a transactional slot lock to fully eliminate
 
 ## User preferences
 
