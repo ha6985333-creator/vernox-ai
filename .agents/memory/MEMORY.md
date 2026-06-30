@@ -4,3 +4,4 @@
 - [Admin table XSS guard](admin-table-xss.md) — admin dashboards render user-supplied fields; esc() only escapes &<> so build DOM nodes w/ textContent, never innerHTML attrs/handlers
 - [drizzle-kit push hangs](drizzle-push-hang.md) — `pnpm --filter @workspace/db run push` blocks on an interactive prompt; apply additive dev schema changes via psql ALTER TABLE and keep the schema file in sync
 - [Booking availability check](booking-availability.md) — double-booking prevention uses Calendar freeBusy before event create; fails CLOSED everywhere (chat captures lead + asks customer to call; endpoint 502); known check-then-create race accepted at this scale
+- [Timezone-at-source parsing](timezone-at-source-parsing.md) — interpret zoneless booking datetimes in the tenant tz at parse time via toEpochMs(raw,tz); never new Date(raw).toISOString() first

@@ -7,7 +7,9 @@ import {
   checkAvailability,
   findNextAvailableSlots,
   SERVER_TIMEZONE,
+  toEpochMs,
 } from "../lib/calendar.js";
+import type { BusinessHours } from "../lib/businessHours.js";
 import { db } from "@workspace/db";
 import { leadsTable, bookingAttemptsTable } from "@workspace/db";
 import { parseBookingDatetime } from "../lib/dateParser.js";
@@ -29,7 +31,7 @@ interface ValidationResult {
   errors: string[];
 }
 
-function extractAndValidateBooking(reply: string, collectAddress = true): {
+function extractAndValidateBooking(reply: string, collectAddress = true, timeZone = SERVER_TIMEZONE): {
   clean: string;
   result: ValidationResult;
 } {
@@ -82,9 +84,16 @@ function extractAndValidateBooking(reply: string, collectAddress = true): {
     errors.push("a service address");
   }
 
-  // Datetime
-  const parsedDate = parseBookingDatetime(parsed.datetime ?? "");
-  if (!parsedDate || parsedDate < new Date()) {
+  // Datetime — the AI emits a zoneless ISO ("2026-07-15T14:00:00") that means a
+  // wall-clock time in the TENANT's timezone. toEpochMs() interprets it in that
+  // tz (and honors an explicit Z/offset if present); natural-language values fall
+  // back to the legacy server-local parser.
+  let bookingMs = toEpochMs(parsed.datetime ?? "", timeZone);
+  if (isNaN(bookingMs)) {
+    const fallback = parseBookingDatetime(parsed.datetime ?? "");
+    bookingMs = fallback ? fallback.getTime() : NaN;
+  }
+  if (isNaN(bookingMs) || bookingMs < Date.now()) {
     errors.push("a valid future date and time");
   }
 
@@ -103,7 +112,7 @@ function extractAndValidateBooking(reply: string, collectAddress = true): {
         email: parsed.email!.trim().toLowerCase(),
         phone: parsed.phone!.trim(),
         address: (parsed.address ?? "").trim(),
-        datetime: parsedDate!.toISOString(),
+        datetime: new Date(bookingMs).toISOString(),
         issue: parsed.issue ?? "",
       },
       errors: [],
@@ -135,7 +144,7 @@ async function captureLead(booking: BookingDetails, tenantId: string): Promise<v
 // ── Availability helpers ──────────────────────────────────────────────────────
 
 /** Human-friendly rendering of an ISO slot, e.g. "Tue, Jul 14, 2:00 PM EDT". */
-function formatSlot(iso: string): string {
+function formatSlot(iso: string, timeZone: string = SERVER_TIMEZONE): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   return new Intl.DateTimeFormat("en-US", {
@@ -144,7 +153,7 @@ function formatSlot(iso: string): string {
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-    timeZone: SERVER_TIMEZONE,
+    timeZone,
     timeZoneName: "short",
   }).format(d);
 }
@@ -157,6 +166,7 @@ async function logBookingAttempt(params: {
   bookingCreated: boolean;
   calendarEventId: string | null;
   suggestedTimes: string[];
+  timezone?: string;
 }): Promise<void> {
   try {
     await db.insert(bookingAttemptsTable).values({
@@ -165,7 +175,7 @@ async function logBookingAttempt(params: {
       customerEmail: params.booking.email,
       customerPhone: params.booking.phone,
       requestedDatetime: new Date(params.booking.datetime),
-      timezone: SERVER_TIMEZONE,
+      timezone: params.timezone ?? SERVER_TIMEZONE,
       available: params.available,
       suggestedTimes: params.suggestedTimes,
       bookingCreated: params.bookingCreated,
@@ -193,9 +203,15 @@ router.post("/chat", async (req, res) => {
   }
 
   try {
-    // Resolve this tenant's industry so the bot asks tailored questions.
+    // Resolve this tenant's industry + scheduling config so the bot asks
+    // tailored questions and the availability checks use the right hours/tz.
     let businessTypeValue: string | undefined;
     let businessName: string | undefined;
+    let services: string[] | undefined;
+    let businessDescription: string | undefined;
+    let businessHours: BusinessHours | undefined;
+    let timeZone = SERVER_TIMEZONE;
+    let durationMinutes = 60;
     if (tenantId) {
       const tenant = await db.query.tenantsTable.findFirst({
         where: (t, { eq }) => eq(t.id, tenantId),
@@ -203,12 +219,21 @@ router.post("/chat", async (req, res) => {
       if (tenant) {
         businessTypeValue = tenant.businessType;
         businessName = tenant.businessName ?? undefined;
+        services = tenant.services ?? undefined;
+        businessDescription = tenant.businessDescription ?? undefined;
+        businessHours = tenant.businessHours ?? undefined;
+        timeZone = tenant.timezone ?? SERVER_TIMEZONE;
+        durationMinutes = tenant.bookingDurationMinutes ?? 60;
       } else {
         req.log.warn({ tenantId }, "chat: tenantId provided but no matching tenant found; falling back to general prompt");
       }
     }
     const businessType = getBusinessType(businessTypeValue);
-    const systemPrompt = getSystemPrompt(businessTypeValue, businessName);
+    const systemPrompt = getSystemPrompt(businessTypeValue, businessName, {
+      services,
+      description: businessDescription,
+    });
+    const slotOptions = { durationMinutes, businessHours, timeZone };
 
     const groq = new Groq({ apiKey });
 
@@ -223,7 +248,7 @@ router.post("/chat", async (req, res) => {
     });
 
     const rawReply = completion.choices[0]?.message?.content ?? "";
-    const { clean, result } = extractAndValidateBooking(rawReply, businessType.collectAddress);
+    const { clean, result } = extractAndValidateBooking(rawReply, businessType.collectAddress, timeZone);
 
     // ── Validation errors ─────────────────────────────────────────
     if (result.errors.length > 0) {
@@ -248,9 +273,9 @@ router.post("/chat", async (req, res) => {
     let available = true;
     let suggestedTimes: string[] = [];
     try {
-      available = await checkAvailability(booking.datetime);
+      available = await checkAvailability(booking.datetime, slotOptions);
       if (!available) {
-        suggestedTimes = await findNextAvailableSlots(booking.datetime, 4);
+        suggestedTimes = await findNextAvailableSlots(booking.datetime, 4, slotOptions);
       }
     } catch (err) {
       // Fail CLOSED: if we can't reach the calendar we must NOT confirm a slot we
@@ -277,6 +302,7 @@ router.post("/chat", async (req, res) => {
         bookingCreated: false,
         calendarEventId: null,
         suggestedTimes: [],
+        timezone: timeZone,
       });
 
       res.json({
@@ -295,13 +321,14 @@ router.post("/chat", async (req, res) => {
         bookingCreated: false,
         calendarEventId: null,
         suggestedTimes,
+        timezone: timeZone,
       });
 
       const message = suggestedTimes.length
-        ? `Unfortunately ${formatSlot(booking.datetime)} is no longer available. Here are the next open times:\n${suggestedTimes
-            .map((s) => `• ${formatSlot(s)}`)
+        ? `Unfortunately ${formatSlot(booking.datetime, timeZone)} is no longer available. Here are the next open times:\n${suggestedTimes
+            .map((s) => `• ${formatSlot(s, timeZone)}`)
             .join("\n")}\n\nWhich of these works best for you?`
-        : `Unfortunately ${formatSlot(booking.datetime)} is no longer available, and I couldn't find an open slot in the next 30 days. Could you suggest another time?`;
+        : `Unfortunately ${formatSlot(booking.datetime, timeZone)} is no longer available, and I couldn't find an open slot in the next 30 days. Could you suggest another time?`;
 
       res.json({ message, bookingConfirmed: false, suggestedTimes });
       return;
@@ -328,7 +355,7 @@ router.post("/chat", async (req, res) => {
 
     let calendarEventId: string | null = null;
     try {
-      calendarEventId = await addCalendarEvent(booking);
+      calendarEventId = await addCalendarEvent(booking, durationMinutes, timeZone);
       bookingResults.calendarEvent.created = calendarEventId !== null;
       if (calendarEventId === null) {
         bookingResults.calendarEvent.error = "Calendar API did not return an event id";
@@ -383,6 +410,7 @@ router.post("/chat", async (req, res) => {
       bookingCreated: bookingResults.calendarEvent.created,
       calendarEventId,
       suggestedTimes: [],
+      timezone: timeZone,
     });
 
     // ── Respond — NEVER echo back PII ────────────────────────────

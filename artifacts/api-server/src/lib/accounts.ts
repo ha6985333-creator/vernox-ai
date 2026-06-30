@@ -1,5 +1,5 @@
 import { db } from "@workspace/db";
-import { tenantsTable, usersTable } from "@workspace/db";
+import { tenantsTable, usersTable, type BusinessHours } from "@workspace/db";
 import { generateTempPassword, hashPassword } from "./auth.js";
 import { sendCredentialsEmail } from "./email.js";
 import { logger } from "./logger.js";
@@ -10,6 +10,11 @@ export interface CreateTenantInput {
   plan?: string;
   businessType?: string;
   businessName?: string;
+  services?: string[];
+  businessHours?: BusinessHours | null;
+  bookingDurationMinutes?: number;
+  timezone?: string;
+  businessDescription?: string;
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;
 }
@@ -25,6 +30,11 @@ export async function createTenantWithCredentials(input: CreateTenantInput) {
     status: "active",
     businessType: input.businessType ?? "general",
     businessName: input.businessName?.trim() || null,
+    services: input.services && input.services.length ? input.services : null,
+    businessHours: input.businessHours ?? null,
+    bookingDurationMinutes: input.bookingDurationMinutes ?? 60,
+    timezone: input.timezone?.trim() || null,
+    businessDescription: input.businessDescription?.trim() || null,
     stripeCustomerId: input.stripeCustomerId,
     stripeSubscriptionId: input.stripeSubscriptionId,
   }).returning();

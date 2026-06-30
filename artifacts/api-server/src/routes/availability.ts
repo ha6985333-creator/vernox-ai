@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, availabilityChecksTable } from "@workspace/db";
-import { checkAvailability, findNextAvailableSlots } from "../lib/calendar.js";
+import { checkAvailability, findNextAvailableSlots, type SlotOptions } from "../lib/calendar.js";
+import type { BusinessHours } from "../lib/businessHours.js";
 
 const router: IRouter = Router();
 
@@ -52,11 +53,33 @@ router.post("/check-availability", async (req, res) => {
   const tenantId =
     typeof body.tenantId === "string" && body.tenantId.trim() ? body.tenantId.trim() : undefined;
 
+  // When a tenant is given, use its configured hours/timezone/duration as the
+  // defaults; explicit body params (timezone/durationMinutes) still win.
+  let tenantHours: BusinessHours | undefined;
+  let tenantTimezone: string | undefined;
+  let tenantDuration: number | undefined;
+  if (tenantId) {
+    const tenant = await db.query.tenantsTable.findFirst({
+      where: (t, { eq }) => eq(t.id, tenantId),
+    });
+    if (tenant) {
+      tenantHours = tenant.businessHours ?? undefined;
+      tenantTimezone = tenant.timezone ?? undefined;
+      tenantDuration = tenant.bookingDurationMinutes ?? undefined;
+    }
+  }
+
+  const slotOptions: SlotOptions = {
+    durationMinutes: body.durationMinutes !== undefined ? duration : tenantDuration ?? duration,
+    businessHours: tenantHours,
+    timeZone: timezone ?? tenantTimezone,
+  };
+
   try {
-    const available = await checkAvailability(requestedDateTime, duration);
+    const available = await checkAvailability(requestedDateTime, slotOptions);
     const suggestedTimes = available
       ? []
-      : await findNextAvailableSlots(requestedDateTime, 4, duration, timezone);
+      : await findNextAvailableSlots(requestedDateTime, 4, slotOptions);
 
     // Best-effort log; never let logging failures break the response.
     try {

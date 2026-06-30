@@ -71,11 +71,23 @@
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
     .modal-overlay.hidden { display: none; }
     .modal { background: #fff; border-radius: 16px; padding: 32px; width: 100%; max-width: 460px; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+    .modal.modal-wide { max-width: 560px; max-height: 88vh; overflow-y: auto; }
     .modal h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 20px; }
     .field { margin-bottom: 16px; }
     .field label { display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px; }
-    .field input, .field select { width: 100%; padding: 10px 13px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 0.9rem; font-family: inherit; outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
-    .field input:focus, .field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+    .field label .hint { font-weight: 400; color: var(--muted, #6b7280); font-size: 0.76rem; }
+    .field input, .field select, .field textarea { width: 100%; padding: 10px 13px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 0.9rem; font-family: inherit; outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
+    .field textarea { resize: vertical; }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+    .field input:disabled { background: #f3f4f6; color: #6b7280; }
+    .field-row { display: flex; gap: 14px; }
+    .field-row .field { flex: 1; }
+    .hours-grid { display: flex; flex-direction: column; gap: 8px; }
+    .hours-row { display: grid; grid-template-columns: 110px 1fr 1fr; align-items: center; gap: 10px; }
+    .hours-row .day-toggle { display: flex; align-items: center; gap: 7px; font-size: 0.85rem; font-weight: 500; }
+    .hours-row .day-toggle input { width: auto; }
+    .hours-row input[type="time"] { padding: 7px 10px; }
+    .hours-row.closed input[type="time"] { opacity: 0.4; pointer-events: none; }
     .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
     .error-toast { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 14px; font-size: 0.83rem; margin-bottom: 14px; display: none; }
 
@@ -142,10 +154,10 @@
     </div>
   </div>
 
-  <!-- Add customer modal -->
+  <!-- Add / Edit customer modal -->
   <div class="modal-overlay hidden" id="addModal">
-    <div class="modal">
-      <h2>Add New Customer</h2>
+    <div class="modal modal-wide">
+      <h2 id="modalTitle">Add New Customer</h2>
       <div class="error-toast" id="modalError"></div>
       <div class="field"><label>Full Name</label><input type="text" id="newName" placeholder="Jane Doe" /></div>
       <div class="field"><label>Email Address</label><input type="email" id="newEmail" placeholder="jane@example.com" /></div>
@@ -156,6 +168,33 @@
           <option value="pro">Pro</option>
           <option value="enterprise">Enterprise</option>
         </select>
+      </div>
+      <div class="field">
+        <label>Business Type</label>
+        <select id="newType"></select>
+      </div>
+      <div class="field"><label>Business Name</label><input type="text" id="newBusinessName" placeholder="Acme Plumbing" /></div>
+      <div class="field">
+        <label>Business Description <span class="hint">(optional, shown to the bot)</span></label>
+        <textarea id="newDescription" rows="2" placeholder="Family-run plumbing service operating across the metro area."></textarea>
+      </div>
+      <div class="field">
+        <label>Services Offered <span class="hint">(one per line — bot only offers these)</span></label>
+        <textarea id="newServices" rows="4" placeholder="Drain cleaning&#10;Leak repair&#10;Water heater installation"></textarea>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Timezone <span class="hint">(IANA, e.g. America/New_York)</span></label>
+          <input type="text" id="newTimezone" placeholder="America/New_York" />
+        </div>
+        <div class="field">
+          <label>Appointment Length (min)</label>
+          <input type="number" id="newDuration" min="1" max="480" placeholder="60" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Business Hours</label>
+        <div id="hoursContainer" class="hours-grid"></div>
       </div>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="cancelBtn">Cancel</button>
@@ -236,6 +275,7 @@
           <td><span class="badge badge-${t.status}">${esc(t.status)}</span></td>
           <td>${new Date(t.createdAt).toLocaleDateString()}</td>
           <td>
+            <button class="btn btn-sm btn-ghost" onclick="openEdit('${t.id}')">Edit</button>
             ${t.status === "active"
               ? `<button class="btn btn-sm btn-danger" onclick="setStatus('${t.id}','suspended')">Suspend</button>`
               : `<button class="btn btn-sm" onclick="setStatus('${t.id}','active')">Activate</button>`}
@@ -259,47 +299,158 @@
       });
     }
 
-    // Add modal
-    document.getElementById("addBtn").addEventListener("click", () => {
+    // ── Modal (shared Add + Edit) ──
+    const DAY_KEYS = [
+      ["mon", "Monday"], ["tue", "Tuesday"], ["wed", "Wednesday"],
+      ["thu", "Thursday"], ["fri", "Friday"], ["sat", "Saturday"], ["sun", "Sunday"],
+    ];
+    let editId = null;          // null = Add mode, otherwise tenant id
+    let businessTypesLoaded = false;
+
+    async function loadBusinessTypes() {
+      if (businessTypesLoaded) return;
+      const types = await apiFetch("/admin/business-types");
+      if (!types) return;
+      const sel = document.getElementById("newType");
+      sel.innerHTML = types.map(t => `<option value="${esc(t.value)}">${esc(t.label)}</option>`).join("");
+      businessTypesLoaded = true;
+    }
+
+    function renderHoursRows() {
+      const container = document.getElementById("hoursContainer");
+      container.innerHTML = DAY_KEYS.map(([key, label]) => `
+        <div class="hours-row" id="hrow-${key}">
+          <label class="day-toggle"><input type="checkbox" id="open-${key}" checked /> ${label}</label>
+          <input type="time" id="from-${key}" value="09:00" />
+          <input type="time" id="to-${key}" value="17:00" />
+        </div>`).join("");
+      DAY_KEYS.forEach(([key]) => {
+        document.getElementById(`open-${key}`).addEventListener("change", (e) => {
+          document.getElementById(`hrow-${key}`).classList.toggle("closed", !e.target.checked);
+        });
+      });
+    }
+
+    const DEFAULT_HOURS = { mon: ["09:00","17:00"], tue: ["09:00","17:00"], wed: ["09:00","17:00"], thu: ["09:00","17:00"], fri: ["09:00","17:00"], sat: null, sun: null };
+
+    function setHours(hours) {
+      const h = hours || DEFAULT_HOURS;
+      DAY_KEYS.forEach(([key]) => {
+        const day = h[key];           // ["HH:MM","HH:MM"] tuple or null
+        const open = Array.isArray(day);
+        document.getElementById(`open-${key}`).checked = open;
+        document.getElementById(`hrow-${key}`).classList.toggle("closed", !open);
+        document.getElementById(`from-${key}`).value = open ? day[0] : "09:00";
+        document.getElementById(`to-${key}`).value = open ? day[1] : "17:00";
+      });
+    }
+
+    function collectHours() {
+      const out = {};
+      DAY_KEYS.forEach(([key]) => {
+        if (document.getElementById(`open-${key}`).checked) {
+          out[key] = [document.getElementById(`from-${key}`).value, document.getElementById(`to-${key}`).value];
+        } else {
+          out[key] = null;
+        }
+      });
+      return out;
+    }
+
+    function setField(id, val) { document.getElementById(id).value = val ?? ""; }
+
+    async function openAdd() {
+      editId = null;
+      await loadBusinessTypes();
       document.getElementById("modalError").style.display = "none";
+      document.getElementById("modalTitle").textContent = "Add New Customer";
+      document.getElementById("saveBtn").textContent = "Create Account";
+      ["newName","newEmail","newBusinessName","newDescription","newServices","newTimezone","newDuration"].forEach(id => setField(id, ""));
+      document.getElementById("newDuration").value = 60;
+      document.getElementById("newPlan").value = "starter";
+      document.getElementById("newType").selectedIndex = 0;
+      ["newName","newEmail","newPlan"].forEach(id => document.getElementById(id).disabled = false);
+      setHours(null);
       document.getElementById("addModal").classList.remove("hidden");
-    });
+    }
+
+    async function openEdit(id) {
+      await loadBusinessTypes();
+      const t = await apiFetch(`/admin/tenants/${id}`);
+      if (!t || t.error) return;
+      editId = id;
+      document.getElementById("modalError").style.display = "none";
+      document.getElementById("modalTitle").textContent = "Edit Customer";
+      document.getElementById("saveBtn").textContent = "Save Changes";
+      setField("newName", t.name);
+      setField("newEmail", t.email);
+      document.getElementById("newPlan").value = t.plan || "starter";
+      document.getElementById("newType").value = t.businessType || "general";
+      setField("newBusinessName", t.businessName);
+      setField("newDescription", t.businessDescription);
+      setField("newServices", Array.isArray(t.services) ? t.services.join("\n") : "");
+      setField("newTimezone", t.timezone);
+      document.getElementById("newDuration").value = t.bookingDurationMinutes ?? 60;
+      // name/email/plan are not editable via PATCH — show but lock them
+      ["newName","newEmail","newPlan"].forEach(eid => document.getElementById(eid).disabled = true);
+      setHours(t.businessHours);
+      document.getElementById("addModal").classList.remove("hidden");
+    }
+    window.openEdit = openEdit;
+
+    function buildSettings() {
+      const services = document.getElementById("newServices").value
+        .split("\n").map(s => s.trim()).filter(Boolean);
+      const durationRaw = document.getElementById("newDuration").value;
+      return {
+        businessType: document.getElementById("newType").value,
+        businessName: document.getElementById("newBusinessName").value.trim(),
+        businessDescription: document.getElementById("newDescription").value.trim(),
+        services,
+        timezone: document.getElementById("newTimezone").value.trim(),
+        bookingDurationMinutes: durationRaw ? Number(durationRaw) : 60,
+        businessHours: collectHours(),
+      };
+    }
+
+    document.getElementById("addBtn").addEventListener("click", openAdd);
     document.getElementById("cancelBtn").addEventListener("click", () => document.getElementById("addModal").classList.add("hidden"));
 
     document.getElementById("saveBtn").addEventListener("click", async () => {
-      const name = document.getElementById("newName").value.trim();
-      const email = document.getElementById("newEmail").value.trim();
-      const plan = document.getElementById("newPlan").value;
       const errEl = document.getElementById("modalError");
       errEl.style.display = "none";
-
-      if (!name || !email) { errEl.textContent = "Name and email are required."; errEl.style.display = "block"; return; }
-
       const btn = document.getElementById("saveBtn");
-      btn.disabled = true; btn.textContent = "Creating…";
+      const settings = buildSettings();
 
-      const res = await apiFetch("/admin/tenants", { method: "POST", body: JSON.stringify({ name, email, plan }) });
-
-      btn.disabled = false; btn.textContent = "Create Account";
-
-      if (!res || res.error) {
-        errEl.textContent = res?.error || "Something went wrong.";
-        errEl.style.display = "block";
+      if (editId) {
+        btn.disabled = true; btn.textContent = "Saving…";
+        const res = await apiFetch(`/admin/tenants/${editId}`, { method: "PATCH", body: JSON.stringify(settings) });
+        btn.disabled = false; btn.textContent = "Save Changes";
+        if (!res || res.error) { errEl.textContent = res?.error || "Something went wrong."; errEl.style.display = "block"; return; }
+        document.getElementById("addModal").classList.add("hidden");
+        loadTenants(); loadStats();
         return;
       }
 
-      // Close add modal, clear fields
-      document.getElementById("addModal").classList.add("hidden");
-      document.getElementById("newName").value = "";
-      document.getElementById("newEmail").value = "";
+      const name = document.getElementById("newName").value.trim();
+      const email = document.getElementById("newEmail").value.trim();
+      const plan = document.getElementById("newPlan").value;
+      if (!name || !email) { errEl.textContent = "Name and email are required."; errEl.style.display = "block"; return; }
 
-      // Show credentials modal
+      btn.disabled = true; btn.textContent = "Creating…";
+      const res = await apiFetch("/admin/tenants", { method: "POST", body: JSON.stringify({ name, email, plan, ...settings }) });
+      btn.disabled = false; btn.textContent = "Create Account";
+
+      if (!res || res.error) { errEl.textContent = res?.error || "Something went wrong."; errEl.style.display = "block"; return; }
+
+      document.getElementById("addModal").classList.add("hidden");
       document.getElementById("credsEmail").textContent = res.tenant.email;
       document.getElementById("credsPassword").textContent = res.tempPassword;
       document.getElementById("credsModal").classList.remove("hidden");
-
       loadTenants(); loadStats();
     });
+
+    renderHoursRows();
 
     // Credentials modal close
     document.getElementById("credsCloseBtn").addEventListener("click", () => document.getElementById("credsModal").classList.add("hidden"));

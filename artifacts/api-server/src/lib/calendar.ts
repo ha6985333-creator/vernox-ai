@@ -4,13 +4,23 @@ import { ReplitConnectors } from "@replit/connectors-sdk";
 import { logger } from "./logger.js";
 import { BUSINESS_NAME, CALENDAR_ID } from "../config.js";
 import type { BookingDetails } from "./email.js";
+import {
+  DEFAULT_BUSINESS_HOURS,
+  timeToDecimal,
+  type BusinessHours,
+  type DayKey,
+} from "./businessHours.js";
 
 const SLOT_DURATION_MINUTES = 60;
-const BUSINESS_START_HOUR = 9; // 9 AM
-const BUSINESS_END_HOUR = 17; // 5 PM
 const SEARCH_WINDOW_DAYS = 30;
 const SLOT_STEP_MINUTES = 30;
-const WEEKEND_DAYS = new Set(["Sat", "Sun"]);
+
+/** Per-tenant scheduling options shared by the availability primitives. */
+export interface SlotOptions {
+  durationMinutes?: number;
+  businessHours?: BusinessHours | null;
+  timeZone?: string;
+}
 
 // The timezone the server resolves business hours against when none is supplied.
 export const SERVER_TIMEZONE =
@@ -21,23 +31,69 @@ interface BusyInterval {
   end: number; // epoch ms
 }
 
+// Matches a zoneless wall-clock datetime ("2026-07-01T17:00" / "...:00") with
+// no trailing Z or ±HH:MM offset.
+const ZONELESS_RE = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/;
+
+/** Offset (ms) of a timezone at a given instant: localWallClockAsUTC − instant. */
+function tzOffsetMs(instantMs: number, timeZone: string): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const map: Record<string, number> = {};
+  for (const p of dtf.formatToParts(new Date(instantMs))) {
+    if (p.type !== "literal") map[p.type] = parseInt(p.value, 10);
+  }
+  let hour = map.hour ?? 0;
+  if (hour === 24) hour = 0; // hour12:false can emit "24" at midnight
+  const asUTC = Date.UTC(map.year ?? 1970, (map.month ?? 1) - 1, map.day ?? 1, hour, map.minute ?? 0, map.second ?? 0);
+  return asUTC - instantMs;
+}
+
 /**
- * Parse a human-readable datetime string like "May 15 at 2pm" into
- * ISO 8601 start/end times. Falls back to tomorrow 9am if unparseable.
+ * Convert a datetime string to epoch ms. A string that carries an explicit
+ * timezone (trailing `Z` or `±HH:MM`) is honored as-is. A zoneless wall-clock
+ * string is interpreted as local time in `timeZone` — so "5pm" means 5pm in the
+ * business's timezone, not on the server. Returns NaN if unparseable.
  */
-function parseDatetime(raw: string): { start: string; end: string } {
-  const parsed = new Date(raw);
-  const base = isNaN(parsed.getTime())
+export function toEpochMs(raw: string, timeZone: string): number {
+  const m = ZONELESS_RE.exec(raw.trim());
+  if (!m) return new Date(raw).getTime(); // has offset, or other format → native
+  const [, Y, Mo, D, H, Mi, S] = m;
+  const guess = Date.UTC(+Y!, +Mo! - 1, +D!, +H!, +Mi!, S ? +S : 0);
+  // One correction pass; exact except inside the ~1h DST fold, which is fine here.
+  return guess - tzOffsetMs(guess, timeZone);
+}
+
+/**
+ * Parse a datetime string into ISO 8601 start/end instants. Zoneless strings are
+ * interpreted in `timeZone`. Falls back to tomorrow 9am (in `timeZone`) when
+ * unparseable.
+ */
+function parseDatetime(
+  raw: string,
+  durationMinutes = SLOT_DURATION_MINUTES,
+  timeZone = SERVER_TIMEZONE,
+): { start: string; end: string } {
+  const ms = toEpochMs(raw, timeZone);
+  const baseMs = isNaN(ms)
     ? (() => {
         const d = new Date();
         d.setDate(d.getDate() + 1);
         d.setHours(9, 0, 0, 0);
-        return d;
+        return d.getTime();
       })()
-    : parsed;
+    : ms;
 
-  const end = new Date(base.getTime() + SLOT_DURATION_MINUTES * 60 * 1000);
-  return { start: base.toISOString(), end: end.toISOString() };
+  const end = baseMs + durationMinutes * 60 * 1000;
+  return { start: new Date(baseMs).toISOString(), end: new Date(end).toISOString() };
 }
 
 // ── Availability primitives ───────────────────────────────────────────────────
@@ -119,17 +175,27 @@ function zonedParts(
   return { weekday: get("weekday"), hour, minute: parseInt(get("minute"), 10) };
 }
 
-/** True when the whole slot falls on a weekday within business hours (in tz). */
+/** Map an Intl "short" weekday ("Mon") to a BusinessHours key ("mon"). */
+function weekdayKey(weekday: string): DayKey {
+  return weekday.toLowerCase().slice(0, 3) as DayKey;
+}
+
+/**
+ * True when the whole slot falls within the configured open hours for that day
+ * (evaluated in the given timezone). A `null` day means closed.
+ */
 function isWithinBusinessHours(
   startMs: number,
   durationMinutes: number,
   timeZone: string,
+  hours: BusinessHours,
 ): boolean {
   const { weekday, hour, minute } = zonedParts(startMs, timeZone);
-  if (WEEKEND_DAYS.has(weekday)) return false;
+  const window = hours[weekdayKey(weekday)];
+  if (!window) return false; // closed that day
   const startDecimal = hour + minute / 60;
   const endDecimal = startDecimal + durationMinutes / 60;
-  return startDecimal >= BUSINESS_START_HOUR && endDecimal <= BUSINESS_END_HOUR;
+  return startDecimal >= timeToDecimal(window[0]) && endDecimal <= timeToDecimal(window[1]);
 }
 
 /**
@@ -139,10 +205,20 @@ function isWithinBusinessHours(
  */
 export async function checkAvailability(
   requestedISO: string,
-  durationMinutes = SLOT_DURATION_MINUTES,
+  opts: SlotOptions = {},
 ): Promise<boolean> {
-  const start = new Date(requestedISO).getTime();
+  const durationMinutes = opts.durationMinutes ?? SLOT_DURATION_MINUTES;
+  const timeZone = opts.timeZone ?? SERVER_TIMEZONE;
+  const hours = opts.businessHours ?? DEFAULT_BUSINESS_HOURS;
+
+  const start = toEpochMs(requestedISO, timeZone);
   if (isNaN(start)) throw new Error("Invalid requested datetime");
+
+  // A slot outside the business's open hours is never bookable, regardless of
+  // what the calendar says — treat it as unavailable so the caller offers
+  // in-hours alternatives instead.
+  if (!isWithinBusinessHours(start, durationMinutes, timeZone, hours)) return false;
+
   const end = start + durationMinutes * 60_000;
   const busy = await fetchBusyIntervals(
     new Date(start).toISOString(),
@@ -159,10 +235,13 @@ export async function checkAvailability(
 export async function findNextAvailableSlots(
   fromISO: string,
   count = 3,
-  durationMinutes = SLOT_DURATION_MINUTES,
-  timeZone: string = SERVER_TIMEZONE,
+  opts: SlotOptions = {},
 ): Promise<string[]> {
-  const requested = new Date(fromISO).getTime();
+  const durationMinutes = opts.durationMinutes ?? SLOT_DURATION_MINUTES;
+  const timeZone = opts.timeZone ?? SERVER_TIMEZONE;
+  const hours = opts.businessHours ?? DEFAULT_BUSINESS_HOURS;
+
+  const requested = toEpochMs(fromISO, timeZone);
   const windowStart = Math.max(isNaN(requested) ? Date.now() : requested, Date.now());
   const windowEnd = windowStart + SEARCH_WINDOW_DAYS * 24 * 60 * 60_000;
   const busy = await fetchBusyIntervals(
@@ -177,7 +256,7 @@ export async function findNextAvailableSlots(
   while (cursor < windowEnd && slots.length < count) {
     const slotEnd = cursor + durationMinutes * 60_000;
     if (
-      isWithinBusinessHours(cursor, durationMinutes, timeZone) &&
+      isWithinBusinessHours(cursor, durationMinutes, timeZone, hours) &&
       !overlapsBusy(cursor, slotEnd, busy)
     ) {
       slots.push(new Date(cursor).toISOString());
@@ -195,10 +274,12 @@ export async function findNextAvailableSlots(
  */
 export async function addCalendarEvent(
   booking: BookingDetails,
+  durationMinutes = SLOT_DURATION_MINUTES,
+  timeZone = SERVER_TIMEZONE,
 ): Promise<string | null> {
   try {
     const connectors = new ReplitConnectors();
-    const { start, end } = parseDatetime(booking.datetime);
+    const { start, end } = parseDatetime(booking.datetime, durationMinutes, timeZone);
 
     const event = {
       summary: `Appointment: ${booking.name} — ${booking.issue}`,

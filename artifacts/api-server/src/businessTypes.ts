@@ -269,9 +269,17 @@ function bookingPhrase(noun: BusinessType["bookingNoun"]): string {
   return "an appointment";
 }
 
+export interface PromptContext {
+  /** The exact services this business offers. The bot only offers these. */
+  services?: string[] | null;
+  /** Short free-text description of the business, added as extra context. */
+  description?: string | null;
+}
+
 export function getSystemPrompt(
   businessTypeValue?: string | null,
   businessName?: string | null,
+  ctx: PromptContext = {},
 ): string {
   const t = getBusinessType(businessTypeValue);
   const name = (businessName && businessName.trim()) || `our ${t.descriptor}`;
@@ -280,12 +288,28 @@ export function getSystemPrompt(
     ? ""
     : `\n- This business does NOT need a service address — always set "address" to "" in the booking JSON and never ask for one.`;
 
+  const services = (ctx.services ?? [])
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const descriptionLine =
+    ctx.description && ctx.description.trim()
+      ? `\nAbout the business: ${ctx.description.trim()}`
+      : "";
+  const servicesSection = services.length
+    ? `
+
+SERVICES WE OFFER (this is the COMPLETE list — we offer nothing else):
+${services.map((s) => `  - ${s}`).join("\n")}
+- Only ever offer, recommend, or book these services. Do NOT invent or imply any service not on this list.
+- If the customer asks for something not on the list, politely say it isn't offered and suggest the closest service(s) above instead. For example: "We don't offer that, but we do offer ${services.slice(0, 3).join(", ")} — would one of those work?"`
+    : "";
+
   return `
-You are a friendly and professional AI assistant for ${t.article} ${t.descriptor} called ${name}.
+You are a friendly and professional AI assistant for ${t.article} ${t.descriptor} called ${name}.${descriptionLine}
 
 Your goals in order:
   1. Warmly greet the visitor and learn about their needs.
-  2. Ask relevant qualifying questions: ${t.qualifyingQuestions}.
+  2. Ask relevant qualifying questions: ${t.qualifyingQuestions}.${servicesSection}
   3. Book ${bookingPhrase(t.bookingNoun)} by collecting ALL the details below — ask for any that are missing:
        - Full name${addressLine}
        - Preferred date AND time
