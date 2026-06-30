@@ -32,7 +32,20 @@
     .btn-sm:hover { background: var(--bg); }
 
     /* ── Page layout ── */
-    .page { max-width: 760px; margin: 0 auto; padding: 40px 24px; }
+    .page { max-width: 860px; margin: 0 auto; padding: 32px 24px 60px; }
+
+    /* ── Tab nav ── */
+    .tabnav { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
+    .tabnav button {
+      background: none; border: none; font-family: inherit; font-size: 0.9rem; font-weight: 600;
+      color: var(--muted); padding: 12px 16px; cursor: pointer; border-bottom: 2px solid transparent;
+      margin-bottom: -1px; transition: color 0.15s;
+    }
+    .tabnav button:hover { color: var(--text); }
+    .tabnav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .view { display: none; }
+    .view.active { display: block; }
 
     /* ── Welcome banner ── */
     .welcome { background: linear-gradient(135deg, #1e1b4b, #4f46e5); border-radius: 16px; padding: 28px 32px; color: #fff; margin-bottom: 32px; }
@@ -85,6 +98,78 @@
     }
     .preview-link:hover { text-decoration: underline; }
     .preview-link svg { width: 14px; height: 14px; }
+
+    /* ── Leads: stats grid ── */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; margin-bottom: 24px; }
+    .stat-card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+    .stat-number { font-size: 1.8rem; font-weight: 800; color: var(--text); line-height: 1.1; }
+    .stat-label { color: var(--muted); font-size: 0.8rem; margin-top: 6px; font-weight: 600; }
+
+    /* ── Leads: filters ── */
+    .filter-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+    .filter-tabs .ftab {
+      padding: 7px 14px; border-radius: 999px; font-size: 0.8rem; font-weight: 600;
+      cursor: pointer; border: 1px solid var(--border); background: #fff; color: var(--muted);
+      font-family: inherit; transition: all 0.15s;
+    }
+    .filter-tabs .ftab:hover { background: var(--bg); }
+    .filter-tabs .ftab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* ── Leads: list ── */
+    .leads-list { display: flex; flex-direction: column; gap: 12px; }
+    .lead-card {
+      background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px; cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .lead-card:hover { border-color: #c7d2fe; box-shadow: 0 1px 4px rgba(79,70,229,0.08); }
+    .lead-main { min-width: 0; flex: 1; }
+    .lead-name { font-weight: 700; font-size: 0.95rem; }
+    .lead-sub { color: var(--muted); font-size: 0.82rem; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lead-meta { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+    .lead-date { color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
+
+    /* ── Status badge ── */
+    .badge { padding: 4px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; text-transform: capitalize; white-space: nowrap; }
+    .badge.new { background: #e3f2fd; color: #1976d2; }
+    .badge.contacted { background: #f3e5f5; color: #7b1fa2; }
+    .badge.converted { background: #e8f5e9; color: #388e3c; }
+    .badge.unsubscribed { background: #ffebee; color: #c62828; }
+
+    /* ── Empty / loading state ── */
+    .empty-state { text-align: center; padding: 48px 24px; color: var(--muted); }
+    .empty-state svg { width: 42px; height: 42px; margin-bottom: 14px; color: #d1d5db; }
+    .empty-state p { font-size: 0.9rem; line-height: 1.6; }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(17,24,39,0.55); display: none;
+      align-items: center; justify-content: center; padding: 20px; z-index: 50;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #fff; border-radius: 16px; width: 100%; max-width: 560px;
+      max-height: 88vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .modal-head { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; position: sticky; top: 0; background: #fff; }
+    .modal-head h3 { font-size: 1.1rem; font-weight: 800; }
+    .modal-close { background: none; border: none; font-size: 1.4rem; line-height: 1; color: var(--muted); cursor: pointer; padding: 0 4px; }
+    .modal-body { padding: 20px 24px 24px; }
+    .detail-row { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f3f4f6; font-size: 0.88rem; }
+    .detail-row .dlabel { color: var(--muted); font-weight: 600; width: 120px; flex-shrink: 0; }
+    .detail-row .dval { color: var(--text); word-break: break-word; }
+    .transcript-box {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+      font-size: 0.83rem; line-height: 1.7; white-space: pre-wrap; word-break: break-word; max-height: 280px; overflow-y: auto; margin-top: 8px; color: var(--text);
+    }
+    .section-label { font-size: 0.78rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 20px 0 6px; }
+    .modal-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; align-items: center; }
+    .status-select { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); font-family: inherit; font-size: 0.85rem; background: #fff; color: var(--text); }
+    .btn-primary { padding: 8px 16px; border-radius: 8px; border: none; background: var(--accent); color: #fff; font-weight: 600; font-size: 0.85rem; cursor: pointer; font-family: inherit; }
+    .btn-primary:hover { background: var(--accent-dark); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #111827; color: #fff; padding: 10px 18px; border-radius: 10px; font-size: 0.85rem; font-weight: 600; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 60; }
+    .toast.show { opacity: 1; }
   </style>
 </head>
 <body>
@@ -100,72 +185,357 @@
   </header>
 
   <div class="page">
-    <div class="welcome">
-      <h1>Your Chat Widget</h1>
-      <p>Add the snippet below to your website and your AI assistant will appear as a floating chat button for your visitors.</p>
-      <div class="status-pill"><div class="status-dot"></div> Account Active</div>
-    </div>
+    <nav class="tabnav">
+      <button data-tab="leads" class="active">Leads</button>
+      <button data-tab="install">Install Widget</button>
+    </nav>
 
-    <!-- Embed snippet -->
-    <div class="card">
-      <div class="card-header">
-        <h2>Embed Code</h2>
-        <p>Paste this single line anywhere inside the <code>&lt;body&gt;</code> tag of your website.</p>
+    <!-- ── Leads view ── -->
+    <section class="view active" id="view-leads">
+      <div class="stats-grid" id="statsGrid"></div>
+
+      <div class="filter-tabs" id="filterTabs"></div>
+
+      <div id="leadsContainer">
+        <div class="empty-state"><p>Loading leads…</p></div>
       </div>
-      <div class="card-body">
-        <div class="snippet-wrap">
-          <pre class="snippet" id="snippetEl">Loading…</pre>
-          <button class="copy-btn" id="copyBtn">Copy</button>
+    </section>
+
+    <!-- ── Install view ── -->
+    <section class="view" id="view-install">
+      <div class="welcome">
+        <h1>Your Chat Widget</h1>
+        <p>Add the snippet below to your website and your AI assistant will appear as a floating chat button for your visitors.</p>
+        <div class="status-pill"><div class="status-dot"></div> Account Active</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Embed Code</h2>
+          <p>Paste this single line anywhere inside the <code>&lt;body&gt;</code> tag of your website.</p>
         </div>
-      </div>
-    </div>
-
-    <!-- How to install -->
-    <div class="card">
-      <div class="card-header">
-        <h2>How to Install</h2>
-        <p>Works with any website — WordPress, Wix, Squarespace, Webflow, or hand-coded HTML.</p>
-      </div>
-      <div class="card-body">
-        <div class="steps">
-          <div class="step">
-            <div class="step-num">1</div>
-            <div class="step-text">Copy the embed code above by clicking <strong>Copy</strong>.</div>
-          </div>
-          <div class="step">
-            <div class="step-num">2</div>
-            <div class="step-text">Open your website editor and find the <code>&lt;/body&gt;</code> closing tag (usually in a footer or theme settings area).</div>
-          </div>
-          <div class="step">
-            <div class="step-num">3</div>
-            <div class="step-text">Paste the code just <strong>before</strong> the <code>&lt;/body&gt;</code> closing tag and save/publish.</div>
-          </div>
-          <div class="step">
-            <div class="step-num">4</div>
-            <div class="step-text">Visit your website — a chat bubble will appear in the <strong>bottom-right corner</strong>. Click it to open the widget.</div>
+        <div class="card-body">
+          <div class="snippet-wrap">
+            <pre class="snippet" id="snippetEl">Loading…</pre>
+            <button class="copy-btn" id="copyBtn">Copy</button>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Preview -->
-    <div class="card">
-      <div class="card-header">
-        <h2>Preview the Widget</h2>
-        <p>See how the chat widget looks and works before adding it to your site.</p>
+      <div class="card">
+        <div class="card-header">
+          <h2>How to Install</h2>
+          <p>Works with any website — WordPress, Wix, Squarespace, Webflow, or hand-coded HTML.</p>
+        </div>
+        <div class="card-body">
+          <div class="steps">
+            <div class="step">
+              <div class="step-num">1</div>
+              <div class="step-text">Copy the embed code above by clicking <strong>Copy</strong>.</div>
+            </div>
+            <div class="step">
+              <div class="step-num">2</div>
+              <div class="step-text">Open your website editor and find the <code>&lt;/body&gt;</code> closing tag (usually in a footer or theme settings area).</div>
+            </div>
+            <div class="step">
+              <div class="step-num">3</div>
+              <div class="step-text">Paste the code just <strong>before</strong> the <code>&lt;/body&gt;</code> closing tag and save/publish.</div>
+            </div>
+            <div class="step">
+              <div class="step-num">4</div>
+              <div class="step-text">Visit your website — a chat bubble will appear in the <strong>bottom-right corner</strong>. Click it to open the widget.</div>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="card-body">
-        <a class="preview-link" id="previewLink" href="/" target="_blank">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          Open widget preview in new tab
-        </a>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Preview the Widget</h2>
+          <p>See how the chat widget looks and works before adding it to your site.</p>
+        </div>
+        <div class="card-body">
+          <a class="preview-link" id="previewLink" href="/" target="_blank">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Open widget preview in new tab
+          </a>
+        </div>
       </div>
+    </section>
+  </div>
+
+  <!-- ── Lead detail modal ── -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h3 id="modalName">Lead</h3>
+        <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
     </div>
   </div>
 
+  <div class="toast" id="toast"></div>
+
   <script>
     const BASE = window.location.origin;
+    const STATUSES = ["new", "contacted", "converted", "unsubscribed"];
+    let currentFilter = "all";
+    let currentLeadId = null;
 
+    function showToast(msg) {
+      const t = document.getElementById("toast");
+      t.textContent = msg;
+      t.classList.add("show");
+      setTimeout(() => t.classList.remove("show"), 2200);
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "—";
+      return d.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+    }
+
+    // ── Tab switching ──
+    document.querySelectorAll(".tabnav button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tabnav button").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+        document.getElementById("view-" + btn.dataset.tab).classList.add("active");
+      });
+    });
+
+    // ── Stats ──
+    async function loadStats() {
+      const res = await fetch("/api/leads/stats", { credentials: "include" });
+      if (!res.ok) return;
+      const s = await res.json();
+      const grid = document.getElementById("statsGrid");
+      grid.replaceChildren();
+      const cards = [
+        { n: s.totalLeads, l: "Total Leads" },
+        { n: s.newLeads, l: "New" },
+        { n: s.contactedLeads, l: "Contacted" },
+        { n: s.convertedLeads, l: "Converted" },
+        { n: Math.round(s.conversionRate || 0) + "%", l: "Conversion Rate" },
+      ];
+      for (const c of cards) {
+        const card = document.createElement("div");
+        card.className = "stat-card";
+        const num = document.createElement("div");
+        num.className = "stat-number";
+        num.textContent = String(c.n);
+        const lab = document.createElement("div");
+        lab.className = "stat-label";
+        lab.textContent = c.l;
+        card.append(num, lab);
+        grid.appendChild(card);
+      }
+    }
+
+    // ── Filter tabs ──
+    function renderFilters() {
+      const wrap = document.getElementById("filterTabs");
+      wrap.replaceChildren();
+      const labels = { all: "All", new: "New", contacted: "Contacted", converted: "Converted", unsubscribed: "Unsubscribed" };
+      for (const key of ["all", ...STATUSES]) {
+        const b = document.createElement("button");
+        b.className = "ftab" + (currentFilter === key ? " active" : "");
+        b.textContent = labels[key];
+        b.addEventListener("click", () => { currentFilter = key; renderFilters(); loadLeads(); });
+        wrap.appendChild(b);
+      }
+    }
+
+    // ── Leads list ──
+    async function loadLeads() {
+      const container = document.getElementById("leadsContainer");
+      const res = await fetch("/api/leads", { credentials: "include" });
+      if (!res.ok) {
+        container.replaceChildren();
+        const e = document.createElement("div");
+        e.className = "empty-state";
+        const p = document.createElement("p");
+        p.textContent = "Could not load leads. Please refresh the page.";
+        e.appendChild(p);
+        container.appendChild(e);
+        return;
+      }
+      let leads = await res.json();
+      if (currentFilter !== "all") leads = leads.filter((l) => l.status === currentFilter);
+
+      container.replaceChildren();
+
+      if (leads.length === 0) {
+        const e = document.createElement("div");
+        e.className = "empty-state";
+        e.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+        const p = document.createElement("p");
+        p.textContent = currentFilter === "all"
+          ? "No leads yet. They'll appear here automatically once customers book through your chat widget."
+          : "No " + currentFilter + " leads right now.";
+        e.appendChild(p);
+        container.appendChild(e);
+        return;
+      }
+
+      const list = document.createElement("div");
+      list.className = "leads-list";
+      for (const lead of leads) {
+        list.appendChild(buildLeadCard(lead));
+      }
+      container.appendChild(list);
+    }
+
+    function buildLeadCard(lead) {
+      const card = document.createElement("div");
+      card.className = "lead-card";
+      card.addEventListener("click", () => openLead(lead.id));
+
+      const main = document.createElement("div");
+      main.className = "lead-main";
+      const name = document.createElement("div");
+      name.className = "lead-name";
+      name.textContent = lead.visitorName || "Unknown";
+      const sub = document.createElement("div");
+      sub.className = "lead-sub";
+      sub.textContent = (lead.serviceIssue || "No service noted") + " · " + (lead.visitorEmail || "");
+      main.append(name, sub);
+
+      const meta = document.createElement("div");
+      meta.className = "lead-meta";
+      const date = document.createElement("div");
+      date.className = "lead-date";
+      date.textContent = fmtDate(lead.createdAt);
+      const badge = document.createElement("span");
+      badge.className = "badge " + (lead.status || "new");
+      badge.textContent = lead.status || "new";
+      meta.append(date, badge);
+
+      card.append(main, meta);
+      return card;
+    }
+
+    // ── Lead detail modal ──
+    function addDetailRow(parent, label, value) {
+      const row = document.createElement("div");
+      row.className = "detail-row";
+      const l = document.createElement("div");
+      l.className = "dlabel";
+      l.textContent = label;
+      const v = document.createElement("div");
+      v.className = "dval";
+      v.textContent = value || "—";
+      row.append(l, v);
+      parent.appendChild(row);
+    }
+
+    async function openLead(leadId) {
+      currentLeadId = leadId;
+      const res = await fetch("/api/leads/" + encodeURIComponent(leadId), { credentials: "include" });
+      if (!res.ok) { showToast("Could not load lead details"); return; }
+      const lead = await res.json();
+
+      document.getElementById("modalName").textContent = lead.visitorName || "Lead";
+      const body = document.getElementById("modalBody");
+      body.replaceChildren();
+
+      const details = document.createElement("div");
+      addDetailRow(details, "Email", lead.visitorEmail);
+      addDetailRow(details, "Phone", lead.visitorPhone);
+      addDetailRow(details, "Address", lead.visitorAddress);
+      addDetailRow(details, "Service", lead.serviceIssue);
+      addDetailRow(details, "Preferred time", fmtDate(lead.preferredDatetime));
+      addDetailRow(details, "Created", fmtDate(lead.createdAt));
+      addDetailRow(details, "Follow-ups", String(lead.followUpCount ?? 0));
+      body.appendChild(details);
+
+      // Transcript
+      const tLabel = document.createElement("div");
+      tLabel.className = "section-label";
+      tLabel.textContent = "Conversation";
+      body.appendChild(tLabel);
+      const tBox = document.createElement("div");
+      tBox.className = "transcript-box";
+      tBox.textContent = lead.conversationTranscript || "No conversation transcript was recorded for this lead.";
+      body.appendChild(tBox);
+
+      // Status actions
+      const sLabel = document.createElement("div");
+      sLabel.className = "section-label";
+      sLabel.textContent = "Status";
+      body.appendChild(sLabel);
+
+      const actions = document.createElement("div");
+      actions.className = "modal-actions";
+      const select = document.createElement("select");
+      select.className = "status-select";
+      for (const st of STATUSES) {
+        const opt = document.createElement("option");
+        opt.value = st;
+        opt.textContent = st.charAt(0).toUpperCase() + st.slice(1);
+        if (st === lead.status) opt.selected = true;
+        select.appendChild(opt);
+      }
+      const saveBtn = document.createElement("button");
+      saveBtn.className = "btn-primary";
+      saveBtn.textContent = "Update Status";
+      saveBtn.addEventListener("click", () => updateStatus(leadId, select.value, saveBtn));
+      actions.append(select, saveBtn);
+      body.appendChild(actions);
+
+      document.getElementById("modalOverlay").classList.add("open");
+    }
+
+    async function updateStatus(leadId, status, btn) {
+      btn.disabled = true;
+      try {
+        const res = await fetch("/api/leads/" + encodeURIComponent(leadId) + "/status", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ status }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.error || "Update failed");
+          return;
+        }
+        showToast("Status updated");
+        closeModal();
+        await Promise.all([loadStats(), loadLeads()]);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function closeModal() {
+      document.getElementById("modalOverlay").classList.remove("open");
+      currentLeadId = null;
+    }
+    document.getElementById("modalClose").addEventListener("click", closeModal);
+    document.getElementById("modalOverlay").addEventListener("click", (e) => {
+      if (e.target.id === "modalOverlay") closeModal();
+    });
+
+    // ── Install tab (embed snippet) ──
+    function initInstall(tenantId) {
+      const snippet = `<script src="${BASE}/embed/${tenantId}/widget.js"><\/script>`;
+      const snippetEl = document.getElementById("snippetEl");
+      snippetEl.innerHTML =
+        `<span class="tag">&lt;script</span> <span class="attr">src</span>=<span class="val">"${BASE}/embed/${tenantId}/widget.js"</span><span class="tag">&gt;&lt;/script&gt;</span>`;
+      document.getElementById("copyBtn").addEventListener("click", () => {
+        navigator.clipboard.writeText(snippet).then(() => {
+          const btn = document.getElementById("copyBtn");
+          btn.textContent = "Copied!";
+          setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+        });
+      });
+    }
+
+    // ── Init ──
     async function init() {
       const res = await fetch("/api/auth/me", { credentials: "include" });
       if (!res.ok) { window.location.href = "/login"; return; }
@@ -174,25 +544,13 @@
 
       document.getElementById("userEmail").textContent = me.email;
 
-      // Fetch tenant ID from server
       const tRes = await fetch("/api/auth/tenant", { credentials: "include" });
       const tData = tRes.ok ? await tRes.json() : null;
       const tenantId = tData?.tenantId ?? "your-tenant-id";
 
-      const snippet = `<script src="${BASE}/embed/${tenantId}/widget.js"><\/script>`;
-      const snippetEl = document.getElementById("snippetEl");
-
-      // Syntax-highlighted version
-      snippetEl.innerHTML =
-        `<span class="tag">&lt;script</span> <span class="attr">src</span>=<span class="val">"${BASE}/embed/${tenantId}/widget.js"</span><span class="tag">&gt;&lt;/script&gt;</span>`;
-
-      document.getElementById("copyBtn").addEventListener("click", () => {
-        navigator.clipboard.writeText(snippet).then(() => {
-          const btn = document.getElementById("copyBtn");
-          btn.textContent = "Copied!";
-          setTimeout(() => { btn.textContent = "Copy"; }, 2000);
-        });
-      });
+      initInstall(tenantId);
+      renderFilters();
+      await Promise.all([loadStats(), loadLeads()]);
     }
 
     document.getElementById("logoutBtn").addEventListener("click", async () => {

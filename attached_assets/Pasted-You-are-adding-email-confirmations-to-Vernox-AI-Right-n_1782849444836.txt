@@ -1,0 +1,399 @@
+You are adding email confirmations to Vernox AI. Right now when someone books, they 
+get nothing — no confirmation, no reminder, nothing. This needs to change immediately.
+
+CURRENT STATE:
+- Backend: Node.js/Express
+- Email service: Resend (already integrated)
+- Database: PostgreSQL
+- Booking flow: Complete (creates calendar event + lead record)
+
+THE PROBLEM:
+When a customer books an appointment:
+1. Google Calendar gets updated ✓
+2. Lead record is created ✓
+3. But the customer receives NO email confirmation
+4. They don't remember they booked
+5. No-show rate goes up 40-60%
+
+YOUR TASK:
+Build an automated email confirmation system that:
+1. Sends confirmation email immediately after booking
+2. Includes appointment details (date, time, location)
+3. Includes business info (name, phone, address)
+4. Includes links to reschedule or cancel
+5. Uses professional HTML email template
+6. Tracks if email was delivered
+
+IMPLEMENTATION REQUIREMENTS:
+
+### STEP 1: Create Email Templates Table
+
+```sql
+CREATE TABLE email_templates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  template_type VARCHAR(100), -- 'booking_confirmation', 'reminder', 'cancellation', etc.
+  subject VARCHAR(255),
+  html_body TEXT,
+  text_body TEXT,
+  variables TEXT[], -- ['customer_name', 'appointment_time', 'business_name']
+  is_default BOOLEAN DEFAULT false,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE email_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id UUID NOT NULL REFERENCES leads(id),
+  business_id UUID NOT NULL REFERENCES businesses(id),
+  template_type VARCHAR(100),
+  recipient_email VARCHAR(255),
+  subject VARCHAR(255),
+  status VARCHAR(50), -- 'pending', 'sent', 'delivered', 'bounced', 'failed'
+  resend_message_id VARCHAR(255),
+  sent_at TIMESTAMP,
+  delivered_at TIMESTAMP,
+  error_message TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### STEP 2: Create Default Email Templates
+
+```javascript
+// backend/templates/emailTemplates.js
+
+const defaultTemplates = {
+  booking_confirmation: {
+    subject: "Booking Confirmed at {business_name}",
+    htmlBody: `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #2196F3; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+    .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; }
+    .confirmation-details { background: white; padding: 15px; margin: 20px 0; border-left: 4px solid #2196F3; }
+    .button { background: #2196F3; color: white; padding: 12px 20px; text-decoration: none; border-radius: 4px; display: inline-block; margin: 10px 0; }
+    .footer { color: #999; font-size: 12px; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Booking Confirmed!</h1>
+    </div>
+    
+    <div class="content">
+      <p>Hi {customer_name},</p>
+      
+      <p>Thank you for booking with <strong>{business_name}</strong>. Your appointment is confirmed!</p>
+      
+      <div class="confirmation-details">
+        <h3>Appointment Details</h3>
+        <p><strong>Date & Time:</strong> {appointment_date} at {appointment_time}</p>
+        <p><strong>Service:</strong> {service}</p>
+        <p><strong>Location:</strong> {business_address}</p>
+        <p><strong>Phone:</strong> {business_phone}</p>
+      </div>
+      
+      <p>We look forward to seeing you!</p>
+      
+      <p>
+        <a href="{reschedule_link}" class="button">Reschedule or Cancel</a>
+      </p>
+      
+      <div class="footer">
+        <p>If you have any questions, please call us at {business_phone} or reply to this email.</p>
+        <p>Don't forget to set a reminder in your calendar!</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+    `
+  }
+};
+
+module.exports = defaultTemplates;
+```
+
+### STEP 3: Email Service Module
+
+```javascript
+// backend/services/emailService.js
+
+const { Resend } = require('resend');
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+async function sendBookingConfirmation(leadId, businessId, customerData, appointmentData) {
+  try {
+    // 1. Get business info
+    const business = await db.query(
+      'SELECT business_name, business_email, business_phone, business_address FROM businesses WHERE id = $1',
+      [businessId]
+    );
+    
+    // 2. Get or create email template
+    let template = await db.query(
+      'SELECT * FROM email_templates WHERE business_id = $1 AND template_type = $2',
+      [businessId, 'booking_confirmation']
+    );
+    
+    if (!template.rows[0]) {
+      // Use default template
+      template = defaultTemplates.booking_confirmation;
+    } else {
+      template = template.rows[0];
+    }
+    
+    // 3. Replace variables in template
+    const variables = {
+      '{customer_name}': customerData.name,
+      '{business_name}': business.rows[0].business_name,
+      '{appointment_date}': new Date(appointmentData.datetime).toLocaleDateString(),
+      '{appointment_time}': new Date(appointmentData.datetime).toLocaleTimeString([], 
+        { hour: '2-digit', minute: '2-digit' }),
+      '{service}': customerData.service,
+      '{business_address}': business.rows[0].business_address,
+      '{business_phone}': business.rows[0].business_phone,
+      '{reschedule_link}': `https://vernoxai.digital/reschedule?leadId=${leadId}&token=xxx`
+    };
+    
+    let htmlBody = template.htmlBody || template.html_body;
+    let subject = template.subject;
+    
+    Object.keys(variables).forEach(key => {
+      htmlBody = htmlBody.replace(key, variables[key]);
+      subject = subject.replace(key, variables[key]);
+    });
+    
+    // 4. Send via Resend
+    const response = await resend.emails.send({
+      from: `${business.rows[0].business_name} <noreply@vernoxai.digital>`,
+      to: customerData.email,
+      subject: subject,
+      html: htmlBody,
+      replyTo: business.rows[0].business_email || 'support@vernoxai.digital'
+    });
+    
+    // 5. Log the email
+    await db.query(
+      `INSERT INTO email_logs 
+       (lead_id, business_id, template_type, recipient_email, subject, status, resend_message_id, sent_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [leadId, businessId, 'booking_confirmation', customerData.email, subject, 'sent', response.id]
+    );
+    
+    return { success: true, messageId: response.id };
+  } catch (error) {
+    console.error('Email send error:', error);
+    
+    // Log failure
+    await db.query(
+      `INSERT INTO email_logs 
+       (lead_id, business_id, template_type, recipient_email, status, error_message)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [leadId, businessId, 'booking_confirmation', customerData.email, 'failed', error.message]
+    );
+    
+    return { success: false, error: error.message };
+  }
+}
+
+module.exports = { sendBookingConfirmation };
+```
+
+### STEP 4: Update Booking Endpoint to Send Email
+
+Update your booking creation code:
+
+```javascript
+// backend/routes/bookings.js
+
+const { sendBookingConfirmation } = require('../services/emailService');
+
+app.post('/api/bookings/create', async (req, res) => {
+  const { 
+    businessId, 
+    customerName, 
+    customerEmail, 
+    customerPhone,
+    requestedService,
+    bookedDateTime
+  } = req.body;
+  
+  try {
+    // 1. Check availability (from PROMPT 1)
+    // 2. Create Google Calendar event
+    // 3. Create lead record (from PROMPT 3)
+    
+    const leadId = ... // from lead creation above
+    
+    // 4. SEND CONFIRMATION EMAIL (NEW)
+    const emailResult = await sendBookingConfirmation(
+      leadId,
+      businessId,
+      {
+        name: customerName,
+        email: customerEmail,
+        phone: customerPhone,
+        service: requestedService
+      },
+      {
+        datetime: bookedDateTime
+      }
+    );
+    
+    if (!emailResult.success) {
+      console.error('Email failed, but booking was created:', emailResult.error);
+      // Continue anyway - booking is created, just email failed
+    }
+    
+    res.json({ 
+      success: true, 
+      leadId: leadId,
+      emailSent: emailResult.success 
+    });
+    
+  } catch (error) {
+    console.error('Booking error:', error);
+    res.status(500).json({ error: 'Failed to create booking' });
+  }
+});
+```
+
+### STEP 5: Add Email Template Management to Portal
+
+Create an admin section where businesses can customize their email:
+
+```jsx
+// frontend/pages/EmailSettings.jsx
+
+export default function EmailSettings() {
+  const [template, setTemplate] = useState('');
+  const [subject, setSubject] = useState('');
+  
+  const handleSave = async () => {
+    await fetch(`/api/email-templates/${businessId}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        template_type: 'booking_confirmation',
+        subject,
+        html_body: template
+      })
+    });
+    alert('Email template saved!');
+  };
+  
+  return (
+    <div className="email-settings">
+      <h2>Booking Confirmation Email</h2>
+      
+      <div className="form-group">
+        <label>Email Subject</label>
+        <input 
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          placeholder="Booking Confirmed at {business_name}"
+        />
+      </div>
+      
+      <div className="form-group">
+        <label>Email Body (HTML)</label>
+        <textarea 
+          value={template}
+          onChange={(e) => setTemplate(e.target.value)}
+          rows="20"
+          placeholder="Paste your HTML email template here..."
+        />
+      </div>
+      
+      <div className="variables-info">
+        <h4>Available Variables:</h4>
+        <ul>
+          <li>{'{customer_name}'} - Customer's name</li>
+          <li>{'{appointment_date}'} - Date of appointment</li>
+          <li>{'{appointment_time}'} - Time of appointment</li>
+          <li>{'{business_name}'} - Your business name</li>
+          <li>{'{business_phone}'} - Your phone number</li>
+          <li>{'{service}'} - Service they booked</li>
+        </ul>
+      </div>
+      
+      <button onClick={handleSave}>Save Template</button>
+    </div>
+  );
+}
+```
+
+### STEP 6: Email Tracking Dashboard
+
+```javascript
+// backend/routes/emailLogs.js
+
+app.get('/api/email-logs/:businessId', async (req, res) => {
+  const logs = await db.query(
+    `SELECT el.*, l.customer_name, l.customer_email
+     FROM email_logs el
+     JOIN leads l ON el.lead_id = l.id
+     WHERE el.business_id = $1
+     ORDER BY el.created_at DESC
+     LIMIT 50`,
+    [req.params.businessId]
+  );
+  
+  res.json(logs.rows);
+});
+
+app.get('/api/email-stats/:businessId', async (req, res) => {
+  const stats = await db.query(`
+    SELECT
+      COUNT(*) as total_sent,
+      SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
+      SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as delivered,
+      SUM(CASE WHEN status = 'bounced' THEN 1 ELSE 0 END) as bounced,
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+    FROM email_logs
+    WHERE business_id = $1
+  `, [req.params.businessId]);
+  
+  res.json(stats.rows[0]);
+});
+```
+
+### STEP 7: Testing Requirements
+
+1. **Test email send:**
+   - Complete a booking
+   - Verify email is sent to customer
+   - Verify email arrives in inbox
+
+2. **Test template variables:**
+   - Email should show correct customer name
+   - Email should show correct appointment time
+   - Email should show correct business name
+
+3. **Test logging:**
+   - Email log records the sent email
+   - Status shows 'sent' and eventually 'delivered'
+   - Failed emails are logged with error message
+
+4. **Test customization:**
+   - Business can update email template in portal
+   - Updated template is used for next booking
+   - Variables are replaced correctly
+
+### STEP 8: Deployment
+
+- Create email tables
+- Deploy emailService.js
+- Update booking endpoint to call sendBookingConfirmation
+- Deploy email settings page
+- Test full flow: booking → email sent → email delivered
+- Monitor email logs for failures
+
+All code should be production-ready with error handling.

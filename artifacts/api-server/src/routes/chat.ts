@@ -122,7 +122,27 @@ function extractAndValidateBooking(reply: string, collectAddress = true, timeZon
 
 // ── Lead capture ──────────────────────────────────────────────────────────────
 
-async function captureLead(booking: BookingDetails, tenantId: string): Promise<void> {
+/** Render the chat history into a plain-text transcript stored with the lead.
+ * `finalReply` is the bot's last message this turn (generated server-side, so it
+ * isn't yet in `messages`) — appended so the saved transcript is complete. */
+function formatTranscript(messages: ChatMessage[], finalReply?: string): string {
+  const lines = messages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => {
+      const who = m.role === "user" ? "Customer" : "Assistant";
+      return `${who}: ${m.content}`;
+    });
+  if (finalReply && finalReply.trim()) {
+    lines.push(`Assistant: ${finalReply.trim()}`);
+  }
+  return lines.join("\n\n");
+}
+
+async function captureLead(
+  booking: BookingDetails,
+  tenantId: string,
+  transcript?: string,
+): Promise<void> {
   const now = new Date();
   const firstFollowUp = new Date(now.getTime() + 2 * 60 * 60 * 1000);
 
@@ -136,6 +156,7 @@ async function captureLead(booking: BookingDetails, tenantId: string): Promise<v
     visitorAddress: booking.address,
     serviceIssue: booking.issue,
     preferredDatetime: preferredDatetime ?? null,
+    conversationTranscript: transcript ?? null,
     status: "new",
     nextFollowUpDate: firstFollowUp,
   });
@@ -289,7 +310,7 @@ router.post("/chat", async (req, res) => {
 
       if (tenantId) {
         try {
-          await captureLead(booking, tenantId);
+          await captureLead(booking, tenantId, formatTranscript(messages, clean));
         } catch (leadErr) {
           req.log.error({ err: leadErr, tenantId }, "Lead capture failed during calendar outage");
         }
@@ -371,7 +392,7 @@ router.post("/chat", async (req, res) => {
 
     if (tenantId) {
       try {
-        await captureLead(booking, tenantId);
+        await captureLead(booking, tenantId, formatTranscript(messages, clean));
         bookingResults.leadCaptured.ok = true;
       } catch (err) {
         const error = err as Error;

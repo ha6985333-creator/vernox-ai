@@ -112,6 +112,32 @@ router.get("/leads/:leadId", async (req, res) => {
   res.json(lead);
 });
 
+// ── PATCH /api/leads/:leadId/status ───────────────────────────────────────────
+const VALID_LEAD_STATUSES = ["new", "contacted", "converted", "unsubscribed"] as const;
+
+router.patch("/leads/:leadId/status", async (req, res) => {
+  if (!req.session.userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+
+  const tenantId = await getTenantId(req.session.userId);
+  if (!tenantId) { res.status(403).json({ error: "No tenant associated with this account" }); return; }
+
+  const { status } = req.body as { status: unknown };
+  if (typeof status !== "string" || !VALID_LEAD_STATUSES.includes(status as (typeof VALID_LEAD_STATUSES)[number])) {
+    res.status(400).json({ error: `status must be one of: ${VALID_LEAD_STATUSES.join(", ")}` });
+    return;
+  }
+
+  const [updated] = await db
+    .update(leadsTable)
+    .set({ status, updatedAt: new Date() })
+    .where(and(eq(leadsTable.id, req.params.leadId!), eq(leadsTable.tenantId, tenantId)))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Lead not found" }); return; }
+
+  res.json({ ok: true, status });
+});
+
 // ── POST /api/leads/:leadId/contact ───────────────────────────────────────────
 router.post("/leads/:leadId/contact", async (req, res) => {
   if (!req.session.userId) { res.status(401).json({ error: "Not authenticated" }); return; }

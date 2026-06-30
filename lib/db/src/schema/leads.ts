@@ -12,6 +12,7 @@ export const leadsTable = pgTable("leads", {
   visitorAddress: text("visitor_address").notNull(),
   serviceIssue: text("service_issue").notNull(),
   preferredDatetime: timestamp("preferred_datetime"),
+  conversationTranscript: text("conversation_transcript"),
   status: text("status").notNull().default("new"),
   followUpCount: integer("follow_up_count").default(0),
   lastContactDate: timestamp("last_contact_date"),
@@ -41,6 +42,7 @@ export const insertLeadSchema = createInsertSchema(leadsTable).omit({
   followUpCount: true,
   lastContactDate: true,
   nextFollowUpDate: true,
+  conversationTranscript: true,
 });
 export type InsertLead = z.infer<typeof insertLeadSchema>;
 export type Lead = typeof leadsTable.$inferSelect;
