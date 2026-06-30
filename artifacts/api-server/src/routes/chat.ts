@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import Groq from "groq-sdk";
 import { getBusinessType, getSystemPrompt } from "../businessTypes.js";
 import { sendConfirmationEmail, sendBookingConfirmationToCustomer, type BookingDetails } from "../lib/email.js";
+import { notifyBusinessOwner, scoreLead } from "../lib/notifications.js";
 import {
   addCalendarEvent,
   checkAvailability,
@@ -230,6 +231,8 @@ router.post("/chat", async (req, res) => {
     // tailored questions and the availability checks use the right hours/tz.
     let businessTypeValue: string | undefined;
     let businessName: string | undefined;
+    let tenantName: string | undefined;
+    let tenantEmail: string | undefined;
     let businessPhone: string | null = null;
     let businessAddress: string | null = null;
     let services: string[] | undefined;
@@ -244,6 +247,8 @@ router.post("/chat", async (req, res) => {
       if (tenant) {
         businessTypeValue = tenant.businessType;
         businessName = tenant.businessName ?? undefined;
+        tenantName = tenant.name;
+        tenantEmail = tenant.email;
         businessPhone = tenant.businessPhone ?? null;
         businessAddress = tenant.businessAddress ?? null;
         services = tenant.services ?? undefined;
@@ -369,16 +374,22 @@ router.post("/chat", async (req, res) => {
       leadCaptured:      { ok: false, error: null as string | null },
     };
 
-    try {
-      await sendConfirmationEmail(booking);
-      bookingResults.confirmationEmail.sent = true;
-    } catch (err) {
-      const error = err as Error;
-      bookingResults.confirmationEmail.error = error.message;
-      req.log.error(
-        { err: error, bookingEmail: booking.email },
-        "Confirmation email failed",
-      );
+    // Owner notification: for tenant bookings this runs per-tenant below
+    // (email + Slack + delivery logging) via notifyBusinessOwner. For the
+    // tenant-less fallback path, send the legacy global owner email.
+    const qualityScore = scoreLead(booking);
+    if (!tenantId) {
+      try {
+        await sendConfirmationEmail(booking);
+        bookingResults.confirmationEmail.sent = true;
+      } catch (err) {
+        const error = err as Error;
+        bookingResults.confirmationEmail.error = error.message;
+        req.log.error(
+          { err: error, bookingEmail: booking.email },
+          "Confirmation email failed",
+        );
+      }
     }
 
     let calendarEventId: string | null = null;
@@ -421,6 +432,29 @@ router.post("/chat", async (req, res) => {
       });
       bookingResults.customerEmail.sent = customerResult.success;
       bookingResults.customerEmail.error = customerResult.error ?? null;
+
+      // Notify the business owner across their enabled channels (email + Slack),
+      // respecting per-tenant settings + quiet hours. Never throws; every
+      // outcome is recorded in notification_logs for the portal.
+      const ownerResult = await notifyBusinessOwner({
+        tenantId,
+        tenant: {
+          name: tenantName ?? "",
+          email: tenantEmail ?? "",
+          businessName: businessName ?? null,
+          timezone: timeZone,
+        },
+        booking,
+        leadId: capturedLeadId,
+        whenText: formatSlot(booking.datetime, timeZone),
+        qualityScore,
+      });
+      // Only a genuine delivery failure should trip the monitoring alert below.
+      // Intentional skips (channel disabled / quiet hours) are not failures.
+      bookingResults.confirmationEmail.sent = !ownerResult.anyFailed;
+      if (ownerResult.anyFailed) {
+        bookingResults.confirmationEmail.error = "owner notification delivery failed (see notification log)";
+      }
     }
 
     // ── Monitoring: alert if any critical step failed ─────────────

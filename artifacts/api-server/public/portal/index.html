@@ -170,6 +170,33 @@
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
     .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #111827; color: #fff; padding: 10px 18px; border-radius: 10px; font-size: 0.85rem; font-weight: 600; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 60; }
     .toast.show { opacity: 1; }
+
+    /* ── Notifications: form ── */
+    .form-field { margin-bottom: 16px; }
+    .form-field label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .form-field input { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 0.88rem; color: var(--text); background: #fff; }
+    .form-field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+    .form-field small { display: block; font-size: 0.76rem; color: var(--muted); margin-top: 5px; line-height: 1.4; }
+    .form-row { display: flex; gap: 14px; }
+    .form-row .form-field { flex: 1; }
+    .form-toggle { margin-bottom: 10px; }
+    .form-toggle.indent { margin-left: 4px; }
+    .switch { display: inline-flex; align-items: center; gap: 9px; font-size: 0.88rem; color: var(--text); cursor: pointer; }
+    .switch input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+    .divider { height: 1px; background: var(--border); margin: 18px 0; }
+    .day-toggles { display: flex; gap: 8px; flex-wrap: wrap; }
+    .day-toggles .day {
+      padding: 7px 13px; border-radius: 999px; font-size: 0.8rem; font-weight: 600;
+      cursor: pointer; border: 1px solid var(--border); background: #fff; color: var(--muted);
+      font-family: inherit; transition: all 0.15s; user-select: none;
+    }
+    .day-toggles .day:hover { background: var(--bg); }
+    .day-toggles .day.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .slack-status { font-size: 0.85rem; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .slack-status .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .slack-status .dot.on { background: #4ade80; }
+    .slack-status .dot.off { background: #d1d5db; }
+    .badge.skipped { background: #fff7ed; color: #c2410c; }
   </style>
 </head>
 <body>
@@ -188,6 +215,7 @@
     <nav class="tabnav">
       <button data-tab="leads" class="active">Leads</button>
       <button data-tab="emails">Emails</button>
+      <button data-tab="notifications">Notifications</button>
       <button data-tab="install">Install Widget</button>
     </nav>
 
@@ -211,6 +239,102 @@
       <div class="stats-grid" id="emailStatsGrid"></div>
       <div id="emailsContainer">
         <div class="empty-state"><p>Loading emails…</p></div>
+      </div>
+    </section>
+
+    <!-- ── Notifications view ── -->
+    <section class="view" id="view-notifications">
+      <div class="welcome">
+        <h1>Booking Notifications</h1>
+        <p>Get alerted the moment a customer books through your chat widget. Choose where alerts go, when to stay quiet, and track every delivery.</p>
+      </div>
+
+      <div class="stats-grid" id="notifStatsGrid"></div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Notification Settings</h2>
+          <p>Control how and when you're notified about new bookings.</p>
+        </div>
+        <div class="card-body">
+          <form id="notifForm">
+            <div class="form-field">
+              <label for="nf-email">Notification email</label>
+              <input type="email" id="nf-email" placeholder="you@business.com" />
+              <small>Where booking alerts are sent. Leave blank to use your account email.</small>
+            </div>
+
+            <div class="form-toggle">
+              <label class="switch"><input type="checkbox" id="nf-emailEnabled" /> <span>Email notifications</span></label>
+            </div>
+            <div class="form-toggle indent">
+              <label class="switch"><input type="checkbox" id="nf-emailOnBooking" /> <span>Email me on every new booking</span></label>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="form-toggle">
+              <label class="switch"><input type="checkbox" id="nf-slackOnBooking" /> <span>Slack me on every new booking</span></label>
+            </div>
+            <div class="form-toggle indent">
+              <label class="switch"><input type="checkbox" id="nf-slackHighValueOnly" /> <span>Only Slack high-value leads (score ≥ 75)</span></label>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="section-label" style="margin-top:0;">Quiet Hours</div>
+            <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;line-height:1.5;">Pause notifications during these hours (your business timezone). Leave blank to always notify.</p>
+            <div class="form-row">
+              <div class="form-field">
+                <label for="nf-quietStart">From</label>
+                <input type="time" id="nf-quietStart" />
+              </div>
+              <div class="form-field">
+                <label for="nf-quietEnd">To</label>
+                <input type="time" id="nf-quietEnd" />
+              </div>
+            </div>
+
+            <div class="section-label">Quiet Days</div>
+            <div class="day-toggles" id="nf-quietDays"></div>
+
+            <div class="modal-actions" style="margin-top:24px;">
+              <button type="submit" class="btn-primary" id="nf-save">Save Settings</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Slack Integration</h2>
+          <p>Send booking alerts to a Slack channel via an incoming webhook.</p>
+        </div>
+        <div class="card-body">
+          <div id="slackStatus" class="slack-status"></div>
+          <div id="slackConnectBox">
+            <div class="form-field">
+              <label for="nf-slackUrl">Slack webhook URL</label>
+              <input type="url" id="nf-slackUrl" placeholder="https://hooks.slack.com/services/..." />
+              <small>In Slack: create an Incoming Webhook app, pick a channel, and paste the URL here. We'll send a test message to confirm it works.</small>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn-primary" id="slackConnectBtn">Connect Slack</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Delivery Log</h2>
+          <p>Every notification we attempt to send, with its result.</p>
+        </div>
+        <div class="card-body" style="padding-top:6px;">
+          <div id="notifLogContainer">
+            <div class="empty-state"><p>Loading…</p></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -312,6 +436,7 @@
 
     // ── Tab switching ──
     let emailsLoaded = false;
+    let notificationsLoaded = false;
     document.querySelectorAll(".tabnav button").forEach((btn) => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".tabnav button").forEach((b) => b.classList.remove("active"));
@@ -323,8 +448,249 @@
           loadEmailStats();
           loadEmails();
         }
+        if (btn.dataset.tab === "notifications" && !notificationsLoaded) {
+          notificationsLoaded = true;
+          initNotifications();
+        }
       });
     });
+
+    // ── Notifications tab ──
+    const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    let quietDaysSel = new Set();
+
+    function renderQuietDays() {
+      const wrap = document.getElementById("nf-quietDays");
+      wrap.replaceChildren();
+      for (const day of DAYS) {
+        const el = document.createElement("button");
+        el.type = "button";
+        el.className = "day" + (quietDaysSel.has(day) ? " on" : "");
+        el.textContent = day.slice(0, 3);
+        el.title = day;
+        el.addEventListener("click", () => {
+          if (quietDaysSel.has(day)) quietDaysSel.delete(day);
+          else quietDaysSel.add(day);
+          renderQuietDays();
+        });
+        wrap.appendChild(el);
+      }
+    }
+
+    function renderSlackStatus(connected) {
+      const status = document.getElementById("slackStatus");
+      const connectBox = document.getElementById("slackConnectBox");
+      status.replaceChildren();
+      const dot = document.createElement("span");
+      dot.className = "dot " + (connected ? "on" : "off");
+      const txt = document.createElement("span");
+      status.append(dot, txt);
+
+      if (connected) {
+        txt.textContent = "Slack is connected. Booking alerts will be posted to your channel.";
+        connectBox.style.display = "none";
+        if (!document.getElementById("slackDisconnectBtn")) {
+          const actions = document.createElement("div");
+          actions.className = "modal-actions";
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.id = "slackDisconnectBtn";
+          btn.className = "btn-sm";
+          btn.textContent = "Disconnect Slack";
+          btn.addEventListener("click", disconnectSlack);
+          actions.appendChild(btn);
+          status.parentElement.appendChild(actions);
+        }
+      } else {
+        txt.textContent = "Slack is not connected.";
+        connectBox.style.display = "block";
+        const existing = document.getElementById("slackDisconnectBtn");
+        if (existing) existing.parentElement.remove();
+      }
+    }
+
+    async function initNotifications() {
+      renderQuietDays();
+      document.getElementById("notifForm").addEventListener("submit", saveNotifSettings);
+      document.getElementById("slackConnectBtn").addEventListener("click", connectSlack);
+      await Promise.all([loadNotifSettings(), loadNotifStats(), loadNotifLogs()]);
+    }
+
+    async function loadNotifSettings() {
+      const res = await fetch("/api/notifications/settings", { credentials: "include" });
+      if (!res.ok) return;
+      const s = await res.json();
+      document.getElementById("nf-email").value = s.notificationEmail || "";
+      document.getElementById("nf-emailEnabled").checked = !!s.emailEnabled;
+      document.getElementById("nf-emailOnBooking").checked = !!s.emailOnBooking;
+      document.getElementById("nf-slackOnBooking").checked = !!s.slackOnBooking;
+      document.getElementById("nf-slackHighValueOnly").checked = !!s.slackHighValueOnly;
+      document.getElementById("nf-quietStart").value = s.quietHoursStart || "";
+      document.getElementById("nf-quietEnd").value = s.quietHoursEnd || "";
+      quietDaysSel = new Set(Array.isArray(s.quietDays) ? s.quietDays : []);
+      renderQuietDays();
+      renderSlackStatus(!!s.slackConnected);
+    }
+
+    async function saveNotifSettings(e) {
+      e.preventDefault();
+      const btn = document.getElementById("nf-save");
+      btn.disabled = true;
+      try {
+        const body = {
+          notificationEmail: document.getElementById("nf-email").value.trim(),
+          emailEnabled: document.getElementById("nf-emailEnabled").checked,
+          emailOnBooking: document.getElementById("nf-emailOnBooking").checked,
+          slackOnBooking: document.getElementById("nf-slackOnBooking").checked,
+          slackHighValueOnly: document.getElementById("nf-slackHighValueOnly").checked,
+          quietHoursStart: document.getElementById("nf-quietStart").value,
+          quietHoursEnd: document.getElementById("nf-quietEnd").value,
+          quietDays: Array.from(quietDaysSel),
+        };
+        const res = await fetch("/api/notifications/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.error || "Could not save settings");
+          return;
+        }
+        showToast("Settings saved");
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function connectSlack() {
+      const btn = document.getElementById("slackConnectBtn");
+      const url = document.getElementById("nf-slackUrl").value.trim();
+      if (!url) { showToast("Enter a Slack webhook URL"); return; }
+      btn.disabled = true;
+      btn.textContent = "Testing…";
+      try {
+        const res = await fetch("/api/notifications/slack/connect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ webhookUrl: url }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.error || "Could not connect Slack");
+          return;
+        }
+        document.getElementById("nf-slackUrl").value = "";
+        renderSlackStatus(true);
+        showToast("Slack connected — check your channel for the test message");
+        loadNotifLogs();
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Connect Slack";
+      }
+    }
+
+    async function disconnectSlack() {
+      const res = await fetch("/api/notifications/slack/disconnect", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) { showToast("Could not disconnect Slack"); return; }
+      renderSlackStatus(false);
+      showToast("Slack disconnected");
+    }
+
+    async function loadNotifStats() {
+      const res = await fetch("/api/notifications/logs/stats", { credentials: "include" });
+      if (!res.ok) return;
+      const s = await res.json();
+      const grid = document.getElementById("notifStatsGrid");
+      grid.replaceChildren();
+      const cards = [
+        { n: s.total, l: "Total Sent" },
+        { n: s.sent, l: "Delivered" },
+        { n: s.failed, l: "Failed" },
+        { n: s.skipped, l: "Skipped" },
+      ];
+      for (const c of cards) {
+        const card = document.createElement("div");
+        card.className = "stat-card";
+        const num = document.createElement("div");
+        num.className = "stat-number";
+        num.textContent = String(c.n ?? 0);
+        const lab = document.createElement("div");
+        lab.className = "stat-label";
+        lab.textContent = c.l;
+        card.append(num, lab);
+        grid.appendChild(card);
+      }
+    }
+
+    async function loadNotifLogs() {
+      const container = document.getElementById("notifLogContainer");
+      const res = await fetch("/api/notifications/logs", { credentials: "include" });
+      container.replaceChildren();
+      if (!res.ok) {
+        const e = document.createElement("div");
+        e.className = "empty-state";
+        const p = document.createElement("p");
+        p.textContent = "Could not load the delivery log. Please refresh the page.";
+        e.appendChild(p);
+        container.appendChild(e);
+        return;
+      }
+      const logs = await res.json();
+      if (logs.length === 0) {
+        const e = document.createElement("div");
+        e.className = "empty-state";
+        const p = document.createElement("p");
+        p.textContent = "No notifications yet. Alerts appear here once customers book through your chat widget.";
+        e.appendChild(p);
+        container.appendChild(e);
+        return;
+      }
+      const list = document.createElement("div");
+      list.className = "leads-list";
+      for (const log of logs) list.appendChild(buildNotifCard(log));
+      container.appendChild(list);
+    }
+
+    function buildNotifCard(log) {
+      const card = document.createElement("div");
+      card.className = "lead-card";
+      card.style.cursor = "default";
+
+      const main = document.createElement("div");
+      main.className = "lead-main";
+      const name = document.createElement("div");
+      name.className = "lead-name";
+      const channel = log.channel === "slack" ? "Slack" : "Email";
+      name.textContent = channel + " · new booking";
+      const sub = document.createElement("div");
+      sub.className = "lead-sub";
+      let subText = "";
+      if (typeof log.qualityScore === "number") subText = "Lead quality " + log.qualityScore + "/100";
+      if (log.reason) subText += (subText ? " · " : "") + log.reason;
+      if (!subText) subText = "—";
+      sub.textContent = subText;
+      main.append(name, sub);
+
+      const meta = document.createElement("div");
+      meta.className = "lead-meta";
+      const date = document.createElement("div");
+      date.className = "lead-date";
+      date.textContent = fmtDate(log.sentAt || log.createdAt);
+      const badge = document.createElement("span");
+      const cls = log.status === "sent" ? "converted" : log.status === "failed" ? "unsubscribed" : "skipped";
+      badge.className = "badge " + cls;
+      badge.textContent = log.status || "—";
+      meta.append(date, badge);
+
+      card.append(main, meta);
+      return card;
+    }
 
     // ── Stats ──
     async function loadStats() {

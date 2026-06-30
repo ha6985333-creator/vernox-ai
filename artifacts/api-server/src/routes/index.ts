@@ -8,6 +8,7 @@ import embedRouter from "./embed";
 import reviewsRouter from "./reviews";
 import leadsRouter from "./leads";
 import emailsRouter from "./emails";
+import notificationsRouter from "./notifications";
 import buyRouter from "./buy";
 import availabilityRouter from "./availability";
 
@@ -22,6 +23,7 @@ router.use("/admin", adminRouter);
 router.use(reviewsRouter);
 router.use(leadsRouter);
 router.use(emailsRouter);
+router.use(notificationsRouter);
 router.use(buyRouter);
 router.use(availabilityRouter);
 

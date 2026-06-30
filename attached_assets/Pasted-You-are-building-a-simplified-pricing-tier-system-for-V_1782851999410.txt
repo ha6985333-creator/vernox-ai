@@ -1,0 +1,744 @@
+You are building a simplified pricing tier system for Vernox AI. There is NO Stripe.
+Instead: Customer selects a tier → fills a form → you manually send them a payment link.
+
+CURRENT STATE:
+- Backend: Node.js/Express
+- Database: PostgreSQL via Supabase
+- Payment: Manual (you send payment links via email)
+- Frontend: React
+- Already have: Form that collects name, email, business name, phone
+
+THE PROBLEM:
+Right now everyone sees $899/month and gets the same offer. You need:
+- Three pricing tiers (Pro $899, Business $1,999, Enterprise $4,999)
+- Customer selects tier
+- Fills form with their details
+- You get notified
+- Features lock/unlock based on tier they select
+
+YOUR TASK:
+Build a pricing tier system where:
+1. Pricing page shows three tiers with features
+2. Customer clicks tier → form appears (pre-filled with tier info)
+3. Form collects name, email, business name, phone, services offered
+4. Submission creates "lead" + sends you admin notification
+5. You manually follow up with payment link
+6. Once paid, tier is activated in their account
+7. Features unlock/lock based on tier
+
+IMPLEMENTATION REQUIREMENTS:
+
+### STEP 1: Create Subscription Tables (Simplified - No Stripe)
+
+```sql
+-- Subscription tiers definition
+CREATE TABLE subscription_tiers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(100), -- 'Pro', 'Business', 'Enterprise'
+  slug VARCHAR(50), -- 'pro', 'business', 'enterprise'
+  price_monthly INTEGER, -- in cents (e.g., 89900 = $899)
+  description TEXT,
+  features JSONB, -- Features included in this tier
+  display_order INTEGER,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Customer subscriptions
+CREATE TABLE subscriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID NOT NULL UNIQUE REFERENCES businesses(id) ON DELETE CASCADE,
+  tier_id UUID NOT NULL REFERENCES subscription_tiers(id),
+  
+  -- Payment tracking (manual)
+  payment_status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'payment_sent', 'paid', 'canceled'
+  payment_link_sent_at TIMESTAMP,
+  paid_at TIMESTAMP,
+  
+  -- Dates
+  subscription_start TIMESTAMP,
+  subscription_end TIMESTAMP,
+  next_renewal_date TIMESTAMP,
+  
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  canceled_at TIMESTAMP
+);
+
+-- Signup leads (capture before payment)
+CREATE TABLE signup_leads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tier_id UUID NOT NULL REFERENCES subscription_tiers(id),
+  
+  -- Customer info from form
+  customer_name VARCHAR(255) NOT NULL,
+  customer_email VARCHAR(255) NOT NULL,
+  business_name VARCHAR(255) NOT NULL,
+  business_phone VARCHAR(20),
+  business_services TEXT[], -- Services they offer
+  
+  -- Status
+  status VARCHAR(50) DEFAULT 'new', -- 'new', 'payment_link_sent', 'paid', 'rejected'
+  admin_notes TEXT,
+  
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Payment sent history (track manual payments)
+CREATE TABLE payment_links_sent (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  signup_lead_id UUID NOT NULL REFERENCES signup_leads(id),
+  payment_method VARCHAR(50), -- 'payoneer', 'nsave', 'bank_transfer', etc.
+  payment_link TEXT,
+  sent_at TIMESTAMP DEFAULT NOW(),
+  recipient_email VARCHAR(255),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### STEP 2: Define Tier Features (Same as before)
+
+```javascript
+// backend/config/tiers.js
+
+const TIERS = {
+  pro: {
+    id: 'pro',
+    name: 'Pro',
+    price: 89900, // $899
+    description: 'Basic lead capture and booking',
+    features: {
+      lead_capture: true,
+      appointment_booking: true,
+      google_calendar_sync: true,
+      customer_email_confirmation: true,
+      sms_sequences: false,
+      email_sequences: false,
+      conversation_history: true,
+      lead_dashboard: true,
+      lead_scoring: false,
+      multi_location: false,
+      slack_notifications: false,
+      industry_specific_ai: false,
+      api_access: false
+    }
+  },
+  
+  business: {
+    id: 'business',
+    name: 'Business',
+    price: 199900, // $1,999
+    description: 'Everything for growing service businesses',
+    features: {
+      lead_capture: true,
+      appointment_booking: true,
+      google_calendar_sync: true,
+      customer_email_confirmation: true,
+      sms_sequences: true,
+      email_sequences: true,
+      conversation_history: true,
+      lead_dashboard: true,
+      lead_scoring: true,
+      multi_location: true,
+      slack_notifications: true,
+      industry_specific_ai: true,
+      api_access: false
+    }
+  },
+  
+  enterprise: {
+    id: 'enterprise',
+    name: 'Enterprise',
+    price: 499900, // $4,999
+    description: 'Custom solution for large operations',
+    features: {
+      lead_capture: true,
+      appointment_booking: true,
+      google_calendar_sync: true,
+      customer_email_confirmation: true,
+      sms_sequences: true,
+      email_sequences: true,
+      conversation_history: true,
+      lead_dashboard: true,
+      lead_scoring: true,
+      multi_location: true,
+      slack_notifications: true,
+      industry_specific_ai: true,
+      api_access: true,
+      crm_sync: true,
+      white_label: true,
+      custom_integrations: true,
+      dedicated_account_manager: true
+    }
+  }
+};
+
+module.exports = TIERS;
+```
+
+### STEP 3: Pricing Page (Frontend)
+
+```jsx
+// frontend/pages/Pricing.jsx
+
+import React, { useState } from 'react';
+import TIERS from '../config/tiers';
+
+export default function PricingPage() {
+  const [selectedTier, setSelectedTier] = useState(null);
+  
+  const handleSelectTier = (tierId) => {
+    setSelectedTier(tierId);
+    // Scroll to form or open modal
+    window.location.href = `#signup-form?tier=${tierId}`;
+  };
+  
+  return (
+    <div className="pricing-container">
+      <h1>Simple, Transparent Pricing</h1>
+      <p className="subtitle">
+        Choose the plan that fits your business. Upgrade anytime.
+      </p>
+      
+      <div className="pricing-cards">
+        {Object.values(TIERS).map(tier => (
+          <div key={tier.id} className="pricing-card">
+            <div className="card-header">
+              <h2>{tier.name}</h2>
+              <p className="description">{tier.description}</p>
+            </div>
+            
+            <div className="price-section">
+              <div className="price">
+                ${(tier.price / 100).toFixed(2)}
+              </div>
+              <div className="period">/month, billed monthly</div>
+              <div className="note">No setup fees, cancel anytime</div>
+            </div>
+            
+            <button 
+              onClick={() => handleSelectTier(tier.id)}
+              className="cta-button"
+            >
+              Get Started
+            </button>
+            
+            <div className="features-list">
+              <h3>Includes:</h3>
+              <ul>
+                {Object.entries(tier.features).map(([feature, enabled]) => (
+                  enabled && (
+                    <li key={feature}>
+                      <span className="checkmark">✓</span>
+                      {formatFeatureName(feature)}
+                    </li>
+                  )
+                ))}
+              </ul>
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      <div className="faq">
+        <h2>Questions?</h2>
+        <p>Email us at ha6985333@gmail.com or call +92...</p>
+      </div>
+    </div>
+  );
+}
+
+function formatFeatureName(feature) {
+  const readable = {
+    lead_capture: 'AI Lead Capture (24/7)',
+    appointment_booking: 'Automatic Appointment Booking',
+    google_calendar_sync: 'Google Calendar Integration',
+    customer_email_confirmation: 'Customer Confirmation Emails',
+    sms_sequences: 'SMS Follow-up Sequences',
+    email_sequences: 'Email Follow-up Sequences',
+    conversation_history: 'Full Conversation History',
+    lead_dashboard: 'Lead Management Dashboard',
+    lead_scoring: 'AI Lead Quality Scoring',
+    multi_location: 'Multi-Location Support',
+    slack_notifications: 'Slack Notifications',
+    industry_specific_ai: 'Industry-Specific AI',
+    api_access: 'API Access'
+  };
+  return readable[feature] || feature.replace(/_/g, ' ');
+}
+```
+
+### STEP 4: Signup Form (Tier-Specific)
+
+```jsx
+// frontend/components/SignupForm.jsx
+
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import TIERS from '../config/tiers';
+
+export default function SignupForm() {
+  const [searchParams] = useSearchParams();
+  const selectedTierId = searchParams.get('tier') || 'pro';
+  const tier = Object.values(TIERS).find(t => t.id === selectedTierId);
+  
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    businessName: '',
+    businessPhone: '',
+    businessServices: []
+  });
+  
+  const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      const response = await fetch('/api/signup/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tierId: selectedTierId,
+          ...formData
+        })
+      });
+      
+      if (response.ok) {
+        setSubmitted(true);
+      } else {
+        alert('Error submitting form. Please try again.');
+      }
+    } catch (error) {
+      console.error('Submission error:', error);
+      alert('Error: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  if (submitted) {
+    return (
+      <div className="signup-success">
+        <h2>✓ We received your request!</h2>
+        <p>We'll send you a secure payment link to your email within 1 hour.</p>
+        <p className="subtitle">
+          Once you complete payment, your account will be activated immediately.
+        </p>
+        <a href="/" className="button">Back to Home</a>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="signup-form-container">
+      <div className="form-header">
+        <h2>Get started with Vernox AI</h2>
+        <div className="selected-tier">
+          <p className="tier-name">{tier?.name} Plan</p>
+          <p className="tier-price">${(tier?.price / 100).toFixed(2)}/month</p>
+          <p className="tier-note">No setup fees • Cancel anytime</p>
+        </div>
+      </div>
+      
+      <form onSubmit={handleSubmit} className="signup-form">
+        <div className="form-group">
+          <label htmlFor="name">Your Name *</label>
+          <input
+            type="text"
+            id="name"
+            name="name"
+            value={formData.name}
+            onChange={handleChange}
+            placeholder="Jane Smith"
+            required
+          />
+        </div>
+        
+        <div className="form-group">
+          <label htmlFor="email">Email Address *</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            placeholder="you@example.com"
+            required
+          />
+        </div>
+        
+        <div className="form-group">
+          <label htmlFor="businessName">Business Name *</label>
+          <input
+            type="text"
+            id="businessName"
+            name="businessName"
+            value={formData.businessName}
+            onChange={handleChange}
+            placeholder="Smith Plumbing Co."
+            required
+          />
+        </div>
+        
+        <div className="form-group">
+          <label htmlFor="businessPhone">Business Phone *</label>
+          <input
+            type="tel"
+            id="businessPhone"
+            name="businessPhone"
+            value={formData.businessPhone}
+            onChange={handleChange}
+            placeholder="+1 555 123 4567"
+            required
+          />
+        </div>
+        
+        <div className="form-group">
+          <label htmlFor="businessServices">What services do you offer? *</label>
+          <input
+            type="text"
+            id="businessServices"
+            name="businessServices"
+            value={formData.businessServices}
+            onChange={handleChange}
+            placeholder="e.g., Plumbing, Emergency repairs, Maintenance"
+            required
+          />
+          <small>Comma-separated list</small>
+        </div>
+        
+        <button 
+          type="submit" 
+          disabled={loading}
+          className="submit-button"
+        >
+          {loading ? 'Submitting...' : 'Request my payment link'}
+        </button>
+        
+        <p className="form-note">
+          We'll send a secure payment link to {formData.email || 'your email'} 
+          within 1 hour. Payment methods: Payoneer, NSave, Bank Transfer
+        </p>
+      </form>
+    </div>
+  );
+}
+```
+
+### STEP 5: Backend Signup Endpoints
+
+```javascript
+// backend/routes/signup.js
+
+app.post('/api/signup/submit', async (req, res) => {
+  const {
+    tierId,
+    name,
+    email,
+    businessName,
+    businessPhone,
+    businessServices
+  } = req.body;
+  
+  try {
+    // Validate tier
+    const tier = await db.query(
+      'SELECT id FROM subscription_tiers WHERE slug = $1',
+      [tierId]
+    );
+    
+    if (!tier.rows[0]) {
+      return res.status(400).json({ error: 'Invalid tier' });
+    }
+    
+    // Create signup lead
+    const lead = await db.query(
+      `INSERT INTO signup_leads 
+       (tier_id, customer_name, customer_email, business_name, business_phone, business_services)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, tier_id`,
+      [tier.rows[0].id, name, email, businessName, businessPhone, businessServices.split(',')]
+    );
+    
+    // Send admin notification
+    await sendAdminNotification(lead.rows[0], name, email, businessName, tierId);
+    
+    // Send customer confirmation email
+    await sendCustomerConfirmationEmail(email, name, businessName, tierId);
+    
+    res.json({ 
+      success: true, 
+      leadId: lead.rows[0].id,
+      message: 'Signup successful. Payment link coming soon.'
+    });
+    
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.status(500).json({ error: 'Signup failed' });
+  }
+});
+
+async function sendAdminNotification(lead, name, email, businessName, tierId) {
+  // Send email to admin (you)
+  const tierName = tierId.charAt(0).toUpperCase() + tierId.slice(1);
+  const tierPrice = { pro: 899, business: 1999, enterprise: 4999 }[tierId];
+  
+  const emailContent = `
+    New Signup Request!
+    
+    Tier: ${tierName} ($${tierPrice}/month)
+    
+    Customer Name: ${name}
+    Email: ${email}
+    Business: ${businessName}
+    Phone: ${businessPhone}
+    
+    Lead ID: ${lead.id}
+    
+    Next step: Send payment link via Payoneer/NSave/Bank Transfer
+  `;
+  
+  await fetch('YOUR_EMAIL_SERVICE', {
+    method: 'POST',
+    body: JSON.stringify({
+      to: 'ha6985333@gmail.com', // Your admin email
+      subject: `New ${tierName} Signup: ${businessName}`,
+      body: emailContent
+    })
+  });
+}
+
+async function sendCustomerConfirmationEmail(email, name, businessName, tierId) {
+  const tierName = tierId.charAt(0).toUpperCase() + tierId.slice(1);
+  const tierPrice = { pro: 899, business: 1999, enterprise: 4999 }[tierId];
+  
+  const emailContent = `
+    Hi ${name},
+    
+    Thanks for signing up for Vernox AI ${tierName}!
+    
+    We received your request for:
+    - Plan: ${tierName} (${tierPrice}/month)
+    - Business: ${businessName}
+    
+    We'll send you a secure payment link within 1 hour.
+    Payment methods: Payoneer, NSave, Bank Transfer
+    
+    Questions? Reply to this email.
+    
+    Best,
+    Haider
+    Founder, Vernox AI
+  `;
+  
+  // Send via your email service
+}
+```
+
+### STEP 6: Admin Dashboard for Signups
+
+```jsx
+// frontend/pages/AdminSignups.jsx
+
+export default function AdminSignups() {
+  const [signups, setSignups] = useState([]);
+  const [filter, setFilter] = useState('new');
+  
+  useEffect(() => {
+    fetchSignups();
+  }, [filter]);
+  
+  const fetchSignups = async () => {
+    const res = await fetch(`/api/admin/signups?status=${filter}`);
+    const data = await res.json();
+    setSignups(data);
+  };
+  
+  const handleSendPaymentLink = async (leadId) => {
+    const paymentLink = prompt('Paste payment link:');
+    if (paymentLink) {
+      await fetch(`/api/admin/signups/${leadId}/send-link`, {
+        method: 'POST',
+        body: JSON.stringify({ paymentLink })
+      });
+      fetchSignups();
+    }
+  };
+  
+  const handleMarkPaid = async (leadId) => {
+    await fetch(`/api/admin/signups/${leadId}/mark-paid`, { method: 'POST' });
+    fetchSignups();
+  };
+  
+  return (
+    <div className="admin-signups">
+      <h2>New Signups ({signups.length})</h2>
+      
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Name</th>
+            <th>Business</th>
+            <th>Tier</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {signups.map(signup => (
+            <tr key={signup.id}>
+              <td>{new Date(signup.created_at).toLocaleDateString()}</td>
+              <td>{signup.customer_name}</td>
+              <td>{signup.business_name}</td>
+              <td>{signup.tier_name}</td>
+              <td>{signup.status}</td>
+              <td>
+                {signup.status === 'new' && (
+                  <button onClick={() => handleSendPaymentLink(signup.id)}>
+                    Send Link
+                  </button>
+                )}
+                {signup.status === 'payment_sent' && (
+                  <button onClick={() => handleMarkPaid(signup.id)}>
+                    Mark Paid
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+```
+
+### STEP 7: Backend Admin Routes
+
+```javascript
+// backend/routes/admin.js
+
+app.get('/api/admin/signups', authenticateAdmin, async (req, res) => {
+  const { status = 'new' } = req.query;
+  
+  const signups = await db.query(
+    `SELECT sl.*, t.name as tier_name, t.price
+     FROM signup_leads sl
+     JOIN subscription_tiers t ON sl.tier_id = t.id
+     WHERE sl.status = $1
+     ORDER BY sl.created_at DESC`,
+    [status]
+  );
+  
+  res.json(signups.rows);
+});
+
+app.post('/api/admin/signups/:leadId/send-link', authenticateAdmin, async (req, res) => {
+  const { leadId } = req.params;
+  const { paymentLink } = req.body;
+  
+  const lead = await db.query(
+    'SELECT * FROM signup_leads WHERE id = $1',
+    [leadId]
+  );
+  
+  // Log that link was sent
+  await db.query(
+    'INSERT INTO payment_links_sent (signup_lead_id, payment_link, recipient_email) VALUES ($1, $2, $3)',
+    [leadId, paymentLink, lead.rows[0].customer_email]
+  );
+  
+  // Send email to customer with payment link
+  await sendPaymentLinkEmail(lead.rows[0].customer_email, paymentLink);
+  
+  // Update status
+  await db.query(
+    'UPDATE signup_leads SET status = $1, updated_at = NOW() WHERE id = $2',
+    ['payment_sent', leadId]
+  );
+  
+  res.json({ success: true });
+});
+
+app.post('/api/admin/signups/:leadId/mark-paid', authenticateAdmin, async (req, res) => {
+  const { leadId } = req.params;
+  
+  const lead = await db.query(
+    `SELECT sl.*, t.id as tier_id FROM signup_leads sl
+     JOIN subscription_tiers t ON sl.tier_id = t.id
+     WHERE sl.id = $1`,
+    [leadId]
+  );
+  
+  // Create business account
+  const business = await db.query(
+    `INSERT INTO businesses (business_name, email, phone)
+     VALUES ($1, $2, $3)
+     RETURNING id`,
+    [lead.rows[0].business_name, lead.rows[0].customer_email, lead.rows[0].business_phone]
+  );
+  
+  // Create subscription
+  await db.query(
+    `INSERT INTO subscriptions (business_id, tier_id, subscription_start, next_renewal_date, paid_at, payment_status)
+     VALUES ($1, $2, NOW(), NOW() + INTERVAL '1 month', NOW(), 'paid')`,
+    [business.rows[0].id, lead.rows[0].tier_id]
+  );
+  
+  // Update signup lead status
+  await db.query(
+    'UPDATE signup_leads SET status = $1 WHERE id = $2',
+    ['paid', leadId]
+  );
+  
+  // Send activation email to customer
+  await sendActivationEmail(lead.rows[0].customer_email, business.rows[0].id);
+  
+  res.json({ success: true });
+});
+```
+
+### STEP 8: Testing Requirements
+
+1. **Test pricing page:**
+   - All three tiers show correctly
+   - Prices are correct ($899, $1,999, $4,999)
+   - "Get Started" button works
+
+2. **Test signup form:**
+   - Fills with tier info when clicked
+   - Form submits and saves to database
+   - Admin gets notified via email
+
+3. **Test admin flow:**
+   - Admin sees new signups
+   - Can send payment link
+   - Can mark as paid
+   - Creates business account + subscription
+
+4. **Test features lock:**
+   - Paid customer can use Business tier features
+   - Pro customer cannot use SMS/Email
+
+### STEP 9: Deployment
+
+- Create tables in Supabase
+- Deploy pricing page
+- Deploy signup form
+- Deploy admin dashboard
+- Test full flow: Pricing → Signup → Admin Notified → Payment Link Sent → Marked Paid → Account Active
+
+This is a simple, manual system that works perfectly for your situation.

@@ -32,9 +32,9 @@ export interface PurchaseRequestInput {
 // which can ONLY deliver to the account owner's own address. Once a domain is
 // verified, set FROM_EMAIL (e.g. "Vernox AI <hello@yourdomain.com>") to send to
 // customers — no code change required.
-const FROM_EMAIL = process.env["FROM_EMAIL"] || "onboarding@resend.dev";
+export const FROM_EMAIL = process.env["FROM_EMAIL"] || "onboarding@resend.dev";
 
-function getResend(): Resend | null {
+export function getResend(): Resend | null {
   const apiKey = process.env["RESEND_API_KEY"];
   if (!apiKey) return null;
   return new Resend(apiKey);
@@ -95,7 +95,7 @@ export interface SendResult {
   error?: string;
 }
 
-function esc(s: string): string {
+export function esc(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
