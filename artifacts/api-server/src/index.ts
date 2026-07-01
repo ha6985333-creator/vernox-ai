@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { ensureAdminUser } from "./lib/accounts";
+import { startFollowUpScheduler } from "./lib/followUpSequence";
 
 const rawPort = process.env["PORT"];
 
@@ -21,4 +22,5 @@ app.listen(port, async (err) => {
   }
   logger.info({ port }, "Server listening");
   await ensureAdminUser().catch((e) => logger.error({ e }, "Admin seed failed"));
+  startFollowUpScheduler();
 });

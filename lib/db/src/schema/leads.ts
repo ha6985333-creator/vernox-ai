@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, uuid, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -17,6 +17,9 @@ export const leadsTable = pgTable("leads", {
   followUpCount: integer("follow_up_count").default(0),
   lastContactDate: timestamp("last_contact_date"),
   nextFollowUpDate: timestamp("next_follow_up_date"),
+  // When true, the automated follow-up sequence for this lead is paused by the
+  // tenant. Manual follow-ups are unaffected; the scheduler skips paused leads.
+  followUpPaused: boolean("follow_up_paused").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

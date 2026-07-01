@@ -381,18 +381,23 @@ const FOLLOW_UP_TEMPLATES = [
   },
 ];
 
-export async function sendLeadFollowUp(lead: Lead, messageNumber: number): Promise<void> {
+export async function sendLeadFollowUp(
+  lead: Lead,
+  messageNumber: number,
+  businessName?: string | null,
+): Promise<void> {
   const resend = getResend();
   if (!resend) { logger.warn("RESEND_API_KEY not set — skipping lead follow-up email"); return; }
 
   const template = FOLLOW_UP_TEMPLATES[messageNumber - 1];
   if (!template) throw new Error(`No template for message_number ${messageNumber}`);
 
+  const biz = businessName?.trim() || BUSINESS_NAME;
   const { error } = await resend.emails.send({
     from: FROM_EMAIL,
     to: lead.visitorEmail,
-    subject: template.subject(lead.visitorName, BUSINESS_NAME),
-    html: template.body(lead.visitorName, lead.serviceIssue, BUSINESS_NAME),
+    subject: template.subject(lead.visitorName, biz),
+    html: template.body(lead.visitorName, lead.serviceIssue, biz),
   });
 
   if (error) {

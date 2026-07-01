@@ -1,8 +1,12 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { leadsTable, leadFollowUpsTable } from "@workspace/db";
-import { eq, and, count, isNotNull, sql } from "drizzle-orm";
+import { leadsTable, leadFollowUpsTable, notificationSettingsTable } from "@workspace/db";
+import type { Tenant } from "@workspace/db";
+import { eq, and, count, isNotNull, inArray, lt, sql } from "drizzle-orm";
 import { sendLeadFollowUp } from "../lib/email.js";
+import { hasFeature } from "../tiers.js";
+import { STEP_COUNT } from "../lib/followUpSequence.js";
+import { isSmsConfigured } from "../lib/sms.js";
 
 const router: IRouter = Router();
 
@@ -11,6 +15,15 @@ async function getTenantId(userId: string): Promise<string | null> {
     where: (u, { eq }) => eq(u.id, userId),
   });
   return user?.tenantId ?? null;
+}
+
+async function getTenant(userId: string): Promise<Tenant | null> {
+  const tenantId = await getTenantId(userId);
+  if (!tenantId) return null;
+  const tenant = await db.query.tenantsTable.findFirst({
+    where: (t, { eq }) => eq(t.id, tenantId),
+  });
+  return tenant ?? null;
 }
 
 function maskEmail(email: string): string {
@@ -62,6 +75,89 @@ router.get("/leads/stats", async (req, res) => {
     emailsOpened,
     conversionRate,
   });
+});
+
+// ── GET /api/leads/sequences ───────────────────────────────────────────────────
+// Automated follow-up sequences currently running for this tenant's leads.
+// Business+ only — Pro tenants get { gated: true } so the portal can upsell.
+router.get("/leads/sequences", async (req, res) => {
+  if (!req.session.userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+
+  const tenant = await getTenant(req.session.userId);
+  if (!tenant) { res.status(403).json({ error: "No tenant associated with this account" }); return; }
+
+  const gated = !hasFeature(tenant.plan, "follow_up_sequences");
+  if (gated) {
+    res.json({ gated: true, enabled: false, smsConfigured: isSmsConfigured(), stepCount: STEP_COUNT, sequences: [] });
+    return;
+  }
+
+  const settings = await db.query.notificationSettingsTable.findFirst({
+    where: (s, { eq }) => eq(s.tenantId, tenant.id),
+  });
+  const enabled = settings?.followUpSequencesEnabled ?? true;
+
+  const rows = await db
+    .select({
+      id: leadsTable.id,
+      visitorName: leadsTable.visitorName,
+      visitorEmail: leadsTable.visitorEmail,
+      visitorPhone: leadsTable.visitorPhone,
+      serviceIssue: leadsTable.serviceIssue,
+      status: leadsTable.status,
+      followUpCount: leadsTable.followUpCount,
+      nextFollowUpDate: leadsTable.nextFollowUpDate,
+      followUpPaused: leadsTable.followUpPaused,
+      lastContactDate: leadsTable.lastContactDate,
+    })
+    .from(leadsTable)
+    .where(
+      and(
+        eq(leadsTable.tenantId, tenant.id),
+        inArray(leadsTable.status, ["new", "contacted"]),
+        isNotNull(leadsTable.nextFollowUpDate),
+        lt(leadsTable.followUpCount, STEP_COUNT),
+      ),
+    )
+    .orderBy(sql`${leadsTable.nextFollowUpDate} ASC`);
+
+  const sequences = rows.map((l) => ({
+    ...l,
+    visitorEmail: maskEmail(l.visitorEmail),
+    visitorPhone: maskPhone(l.visitorPhone),
+  }));
+
+  res.json({ gated: false, enabled, smsConfigured: isSmsConfigured(), stepCount: STEP_COUNT, sequences });
+});
+
+// ── PUT /api/leads/sequences/settings ──────────────────────────────────────────
+// Master on/off switch for the tenant's automated follow-up sequences.
+router.put("/leads/sequences/settings", async (req, res) => {
+  if (!req.session.userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+
+  const tenant = await getTenant(req.session.userId);
+  if (!tenant) { res.status(403).json({ error: "No tenant associated with this account" }); return; }
+
+  if (!hasFeature(tenant.plan, "follow_up_sequences")) {
+    res.status(403).json({ error: "Automated follow-up sequences require the Business plan or higher." });
+    return;
+  }
+
+  const { enabled } = req.body as { enabled: unknown };
+  if (typeof enabled !== "boolean") {
+    res.status(400).json({ error: "enabled must be a boolean" });
+    return;
+  }
+
+  await db
+    .insert(notificationSettingsTable)
+    .values({ tenantId: tenant.id, followUpSequencesEnabled: enabled })
+    .onConflictDoUpdate({
+      target: notificationSettingsTable.tenantId,
+      set: { followUpSequencesEnabled: enabled, updatedAt: new Date() },
+    });
+
+  res.json({ ok: true, enabled });
 });
 
 // ── GET /api/leads ─────────────────────────────────────────────────────────────
@@ -224,6 +320,32 @@ router.post("/leads/:leadId/contact", async (req, res) => {
   }
 
   res.json({ ok: true, messageId: followUp!.id });
+});
+
+// ── POST /api/leads/:leadId/pause-sequence ────────────────────────────────────
+// Pause (or resume) the automated follow-up sequence for a single lead.
+router.post("/leads/:leadId/pause-sequence", async (req, res) => {
+  if (!req.session.userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+
+  const tenantId = await getTenantId(req.session.userId);
+  if (!tenantId) { res.status(403).json({ error: "No tenant associated with this account" }); return; }
+
+  const { paused } = req.body as { paused: unknown };
+  const nextPaused = paused === undefined ? true : paused;
+  if (typeof nextPaused !== "boolean") {
+    res.status(400).json({ error: "paused must be a boolean" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(leadsTable)
+    .set({ followUpPaused: nextPaused, updatedAt: new Date() })
+    .where(and(eq(leadsTable.id, req.params.leadId!), eq(leadsTable.tenantId, tenantId)))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Lead not found" }); return; }
+
+  res.json({ ok: true, paused: nextPaused });
 });
 
 // ── POST /api/leads/:leadId/mark-converted ────────────────────────────────────

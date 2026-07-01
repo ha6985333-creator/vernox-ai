@@ -7,4 +7,5 @@
 - [Timezone-at-source parsing](timezone-at-source-parsing.md) — interpret zoneless booking datetimes in the tenant tz at parse time via toEpochMs(raw,tz); never new Date(raw).toISOString() first
 - [Lead transcript & portal](leads-portal-rendering.md) — chat stores conversation_transcript on lead capture; portal Leads+Emails tabs render ALL user fields via textContent/DOM, never innerHTML (stored-XSS sink); /api/emails recipient intentionally unmasked
 - [Never-throws result flag](never-throws-result-flag.md) — swallow-errors notifiers must return a structured result; monitoring alerts branch on anyFailed, not on the call returning
-- [Pricing tier gating](pricing-tier-gating.md) — tiers.ts is source of truth; only lead scoring/Slack/industry-AI gated (Business+), enforced server-side; SMS/multi-location/API/white-label/CRM are marketing-only, NOT gated
+- [Pricing tier gating](pricing-tier-gating.md) — tiers.ts is source of truth; only lead scoring/Slack/industry-AI/follow-up-sequences gated (Business+), enforced server-side; multi-location/API/white-label/CRM are marketing-only, NOT gated
+- [Automated follow-up sequences](follow-up-sequences.md) — Business+ SMS/email drip; state on lead row + notification_settings toggle (no new table); 5-min unref'd scheduler; gate checked every tick; advance even if a channel fails

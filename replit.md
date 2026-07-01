@@ -21,6 +21,9 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 | `NOTIFY_EMAIL` | Where booking alerts are sent |
 | `GROQ_API_KEY` | Groq LLM for chat widget |
 | `PAYONEER_SECRET` | (Optional) Payoneer IPN signature verification |
+| `TWILIO_ACCOUNT_SID` | (Optional) Twilio SID — enables SMS follow-up steps |
+| `TWILIO_AUTH_TOKEN` | (Optional) Twilio auth token |
+| `TWILIO_FROM_NUMBER` | (Optional) Twilio sender number (E.164) |
 
 ## Stack
 
@@ -38,7 +41,7 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 - `artifacts/api-server/src/businessTypes.ts` — registry of ~21 selectable business types + `getSystemPrompt(type,name)` for per-tenant tailored chat prompts
 - `artifacts/api-server/src/app.ts` — Express app + middleware
 - `artifacts/api-server/src/routes/` — auth, admin, chat, emails, webhooks
-- `artifacts/api-server/src/lib/` — auth helpers, email, accounts, logger
+- `artifacts/api-server/src/lib/` — auth helpers, email, accounts, logger, `sms.ts` (Twilio REST), `followUpSequence.ts` (automated drip engine + scheduler)
 - `artifacts/api-server/public/` — static frontend files
 - `lib/db/src/schema/` — tenants (incl. `businessPhone`/`businessAddress`) + users + `email_logs` Drizzle tables
 
@@ -69,6 +72,9 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 | GET | `/api/admin/stats` | admin | Stats counters |
 | GET | `/api/admin/purchase-requests` | admin | List all sale requests |
 | PATCH | `/api/admin/purchase-requests/:id/status` | admin | Set status (new/contacted/paid/closed) |
+| GET | `/api/leads/sequences` | tenant | Active automated follow-up sequences (Business+; Pro gets `{gated:true}`). Returns master toggle, SMS-config status, per-lead progress (contacts masked) |
+| PUT | `/api/leads/sequences/settings` | tenant | Master on/off toggle for automated sequences (Business+; writes `notification_settings.followUpSequencesEnabled`) |
+| POST | `/api/leads/:leadId/pause-sequence` | tenant | Pause/resume one lead's sequence — body `{paused:boolean}` (defaults true) |
 | GET | `/api/emails` | tenant | List this tenant's confirmation-email log (limit 50, newest first) |
 | GET | `/api/emails/stats` | tenant | Counts grouped by status (`{total,sent,failed,skipped}`) |
 | GET | `/api/notifications/settings` | tenant | Owner-notification settings (defaults if no row); `slackWebhookUrl` never returned, `slackConnected` bool instead |
@@ -87,6 +93,7 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 - **Customer confirmation emails**: On a completed booking the chat also emails the **customer** a professional HTML confirmation (appointment date/time, business name + phone + address, "reply or call to reschedule/cancel" CTA) via `sendBookingConfirmationToCustomer()`. Every send is logged to `email_logs` (status `sent`/`failed`/`skipped`); the function never throws so a delivery failure can't break the booking. Tenants view the log + counts in the portal **Emails** tab. NOTE: with no verified Resend domain, customer emails to non-owner addresses fail (403) and are logged as `failed` — verify a domain at resend.com/domains and set `FROM_EMAIL` to deliver to real customers.
 - **Double-booking prevention**: Before confirming a booking or creating a calendar event, the chat checks the slot against Google Calendar (`freeBusy`). If the slot is taken, the booking is blocked and the bot offers the next open times (Mon–Fri 9–5, scanning 30 days). If the calendar is unreachable, the chat fails **closed** — it captures the lead, declines to confirm, and asks the customer to call. Every attempt is logged to `booking_attempts`. The standalone `POST /api/check-availability` endpoint exposes the same check. Logging tables: `availability_checks`, `booking_attempts`.
 - **Owner booking notifications**: On a completed tenant booking the chat alerts the **business owner** across their enabled channels via `notifyBusinessOwner()` — per-tenant email (Resend) + optional Slack (incoming webhook). Respects per-tenant settings: channel on/off toggles, quiet hours (HH:MM in tenant tz, overnight-aware) + quiet days, and a "Slack high-value only" gate (quality score ≥ 75). Every outcome (sent/failed/skipped) is logged to `notification_logs`; the function never throws and returns an `OwnerNotifyResult` so the chat monitoring alert fires only on a *genuine* delivery failure (not an intentional skip). Tenants manage settings, connect/disconnect Slack, and view the delivery log + stats in the portal **Notifications** tab. Replaces the legacy global owner email for the tenant path; the global `sendConfirmationEmail` remains a fallback only when there is no `tenantId`. NOTE: same Resend unverified-domain limit — owner emails to non-owner addresses fail (403) and are logged as `failed`.
+- **Automated follow-up sequences** (Business+): After a lead is captured, a fixed multi-step nurture drip fires over ~3 days via a 5-min scheduler (`startFollowUpScheduler()` in `index.ts`, engine in `lib/followUpSequence.ts`). Cadence: email @2h → email + SMS @24h → SMS @72h (`FOLLOW_UP_SEQUENCE`, `STEP_COUNT`). State lives on the lead row (`followUpCount`, `nextFollowUpDate`, `lastContactDate`, `followUpPaused`) plus `notification_settings.followUpSequencesEnabled` (tenant master switch) — no new table. Gated on the `follow_up_sequences` feature (rank 2 = Business+) via `hasFeature()`, enforced server-side on every tick (a downgraded tenant just stops getting new steps). SMS uses Twilio REST (`lib/sms.ts`, no SDK) and degrades gracefully when `TWILIO_*` env is unset (email steps still send; SMS logged `skipped`). Every channel send is logged to `lead_follow_ups`. A 1h min-gap guard prevents double-sends vs manual follow-ups. Tenants view active sequences, toggle the master switch, and pause/resume per-lead in the portal **Leads** tab; Pro tenants see an upgrade prompt.
 - **Lead quality score**: `scoreLead()` — simple completeness signal (0-100), 25 pts each for phone/email/service/datetime. Shown in owner notifications + portal log. Not a predictive model.
 - **Slack connect**: portal pastes an incoming-webhook URL → `POST /api/notifications/slack/connect` validates (https + `hooks.slack.com` host only, SSRF guard) and sends a live test message before persisting. The stored webhook is write-only (never returned to the client).
 - **Admin dashboard**: Master admin can view all customers, create accounts manually, suspend/activate tenants, and review/triage incoming sale requests.

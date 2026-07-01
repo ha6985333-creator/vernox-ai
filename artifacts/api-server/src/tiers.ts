@@ -112,12 +112,14 @@ export function isValidPlan(plan: string): plan is PlanKey {
 export type GatedFeature =
   | "lead_scoring"
   | "slack_notifications"
-  | "industry_specific_ai";
+  | "industry_specific_ai"
+  | "follow_up_sequences";
 
 const FEATURE_MIN_RANK: Record<GatedFeature, number> = {
   lead_scoring: 2,
   slack_notifications: 2,
   industry_specific_ai: 2,
+  follow_up_sequences: 2,
 };
 
 export function hasFeature(
@@ -131,6 +133,7 @@ export interface PlanFeatures {
   leadScoring: boolean;
   slackNotifications: boolean;
   industrySpecificAI: boolean;
+  followUpSequences: boolean;
 }
 
 export function featuresForPlan(plan?: string | null): PlanFeatures {
@@ -138,5 +141,6 @@ export function featuresForPlan(plan?: string | null): PlanFeatures {
     leadScoring: hasFeature(plan, "lead_scoring"),
     slackNotifications: hasFeature(plan, "slack_notifications"),
     industrySpecificAI: hasFeature(plan, "industry_specific_ai"),
+    followUpSequences: hasFeature(plan, "follow_up_sequences"),
   };
 }

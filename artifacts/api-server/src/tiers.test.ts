@@ -55,6 +55,7 @@ describe("hasFeature", () => {
     "lead_scoring",
     "slack_notifications",
     "industry_specific_ai",
+    "follow_up_sequences",
   ];
 
   it("denies every gated feature to Pro (and its legacy/unknown aliases)", () => {
@@ -81,6 +82,7 @@ describe("featuresForPlan", () => {
       leadScoring: false,
       slackNotifications: false,
       industrySpecificAI: false,
+      followUpSequences: false,
     });
   });
 
@@ -98,6 +100,7 @@ describe("featuresForPlan", () => {
       leadScoring: true,
       slackNotifications: true,
       industrySpecificAI: true,
+      followUpSequences: true,
     });
   });
 
@@ -106,6 +109,7 @@ describe("featuresForPlan", () => {
       leadScoring: true,
       slackNotifications: true,
       industrySpecificAI: true,
+      followUpSequences: true,
     });
   });
 });

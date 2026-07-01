@@ -374,6 +374,19 @@
           </div>
         </div>
 
+        <div class="leads-table-wrap" id="sequencesPanel" style="margin-bottom:18px;">
+          <div class="leads-table-header">
+            <h3>Automated Follow-up Sequences</h3>
+            <button class="btn btn-sm btn-ghost" onclick="loadSequences()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.71"/></svg>
+              Refresh
+            </button>
+          </div>
+          <div id="sequencesContent">
+            <div style="padding:24px;text-align:center;"><div class="spinner spinner-lg" style="margin:0 auto;"></div></div>
+          </div>
+        </div>
+
         <div class="leads-table-wrap">
           <div class="leads-table-header">
             <h3>Recent Leads</h3>
@@ -587,7 +600,7 @@
       document.getElementById("topbarTitle").textContent = tabTitles[tab] || tab;
       location.hash = tab;
       if (tab === "reviews") { loadReviewAnalytics(); loadReviews(); }
-      if (tab === "leads") loadLeads();
+      if (tab === "leads") { loadLeads(); loadSequences(); }
     }
 
     // ── Connect Google Business Profile (mock OAuth) ──────────────
@@ -1075,6 +1088,130 @@
           </table>`;
       } catch (_) {
         content.innerHTML = `<div class="leads-empty"><div class="leads-empty-icon">⚠️</div><p>Failed to load leads. Please try again.</p></div>`;
+      }
+    }
+
+    // ── Automated Follow-up Sequences ─────────────────────────────
+    async function loadSequences() {
+      const content = document.getElementById("sequencesContent");
+      content.innerHTML = `<div style="padding:24px;text-align:center;"><div class="spinner spinner-lg" style="margin:0 auto;"></div></div>`;
+
+      try {
+        const res = await fetch("/api/leads/sequences", { credentials: "include" });
+        if (res.status === 401) {
+          content.innerHTML = `<div class="leads-empty"><div class="leads-empty-icon">🔒</div><p>Please <a href="/login" style="color:var(--accent)">log in</a>.</p></div>`;
+          return;
+        }
+        if (!res.ok) throw new Error("API error");
+        const data = await res.json();
+
+        if (data.gated) {
+          content.innerHTML = `
+            <div style="padding:24px;text-align:center;">
+              <div style="font-size:1.6rem;margin-bottom:8px;">🔒</div>
+              <p style="margin:0 0 4px;font-weight:600;">Automated SMS &amp; email follow-up sequences</p>
+              <p style="color:var(--muted);margin:0 0 14px;">Multi-step reminders fire automatically over 3 days after every lead — email at 2h, email + SMS at 24h, SMS at 72h.</p>
+              <a href="/#pricing" class="btn btn-sm btn-primary">Upgrade to Business</a>
+            </div>`;
+          return;
+        }
+
+        const smsNote = data.smsConfigured
+          ? `<span style="color:var(--ok,#16a34a);">SMS active</span>`
+          : `<span style="color:var(--muted);">SMS not configured — email steps still send</span>`;
+
+        const toggle = `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);">
+            <div>
+              <div style="font-weight:600;">Follow-up sequences ${data.enabled ? "enabled" : "paused"}</div>
+              <div style="color:var(--muted);font-size:0.82rem;">Auto steps: email @2h · email + SMS @24h · SMS @72h. ${smsNote}</div>
+            </div>
+            <button class="btn btn-sm ${data.enabled ? "btn-ghost" : "btn-primary"}" onclick="toggleSequences(${!data.enabled}, this)">
+              ${data.enabled ? "Pause all" : "Resume all"}
+            </button>
+          </div>`;
+
+        const seqs = data.sequences || [];
+        let list;
+        if (seqs.length === 0) {
+          list = `<div class="leads-empty"><div class="leads-empty-icon">📨</div><p>No active sequences. New leads are enrolled automatically after they book.</p></div>`;
+        } else {
+          list = `
+            <table class="leads-table">
+              <thead><tr><th>Name</th><th>Contact</th><th>Progress</th><th>Next Step</th><th>State</th><th>Actions</th></tr></thead>
+              <tbody>${seqs.map(s => buildSequenceRow(s, data.stepCount)).join("")}</tbody>
+            </table>`;
+        }
+
+        content.innerHTML = toggle + list;
+      } catch (_) {
+        content.innerHTML = `<div class="leads-empty"><div class="leads-empty-icon">⚠️</div><p>Failed to load sequences. Please try again.</p></div>`;
+      }
+    }
+
+    function buildSequenceRow(s, stepCount) {
+      const next = s.followUpPaused
+        ? "—"
+        : (s.nextFollowUpDate
+            ? new Date(s.nextFollowUpDate).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+            : "—");
+      const stateBadge = s.followUpPaused
+        ? `<span class="lead-status lead-status-unsubscribed">paused</span>`
+        : `<span class="lead-status lead-status-new">active</span>`;
+      const contact = s.visitorPhone && s.visitorPhone !== "—" ? s.visitorPhone : (s.visitorEmail || "—");
+      const btn = s.followUpPaused
+        ? `<button class="btn-xs btn-xs-green" onclick="toggleLeadPause('${s.id}', false, this)">Resume</button>`
+        : `<button class="btn-xs btn-xs-red" onclick="toggleLeadPause('${s.id}', true, this)">Pause</button>`;
+      return `
+        <tr id="seq-row-${s.id}">
+          <td style="font-weight:600;">${esc(s.visitorName)}</td>
+          <td style="color:var(--muted);font-family:monospace;font-size:0.79rem;">${esc(contact)}</td>
+          <td style="text-align:center;">${s.followUpCount || 0}/${stepCount}</td>
+          <td style="color:var(--muted);font-size:0.82rem;">${next}</td>
+          <td>${stateBadge}</td>
+          <td><div class="lead-actions">${btn}</div></td>
+        </tr>`;
+    }
+
+    async function toggleSequences(enabled, btn) {
+      if (btn) { btn.disabled = true; btn.textContent = "…"; }
+      try {
+        const res = await fetch("/api/leads/sequences/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ enabled }),
+        });
+        if (res.ok) { await loadSequences(); }
+        else {
+          const data = await res.json().catch(() => ({}));
+          alert(data.error || "Failed to update setting.");
+          if (btn) { btn.disabled = false; }
+          await loadSequences();
+        }
+      } catch (_) {
+        alert("Network error — please try again.");
+        if (btn) { btn.disabled = false; }
+      }
+    }
+
+    async function toggleLeadPause(leadId, paused, btn) {
+      if (btn) { btn.disabled = true; btn.textContent = "…"; }
+      try {
+        const res = await fetch(`/api/leads/${leadId}/pause-sequence`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ paused }),
+        });
+        if (res.ok) { await loadSequences(); }
+        else {
+          alert("Failed to update sequence.");
+          if (btn) { btn.disabled = false; }
+        }
+      } catch (_) {
+        alert("Network error — please try again.");
+        if (btn) { btn.disabled = false; }
       }
     }
 

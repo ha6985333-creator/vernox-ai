@@ -25,6 +25,11 @@ export const notificationSettingsTable = pgTable("notification_settings", {
   // When true, only Slack-notify for high-value leads (quality score >= 75).
   slackHighValueOnly: boolean("slack_high_value_only").notNull().default(false),
 
+  // Master switch for the automated lead follow-up sequence (email + SMS).
+  // Business+ only (enforced server-side). On by default so the paid promise
+  // is delivered; tenants can pause the whole automation from the portal.
+  followUpSequencesEnabled: boolean("follow_up_sequences_enabled").notNull().default(true),
+
   // Quiet hours — "HH:MM" 24h clock, interpreted in the tenant's timezone.
   // When both set, notifications inside the window are skipped (logged).
   quietHoursStart: text("quiet_hours_start"),
