@@ -31,6 +31,15 @@ const mocks = vi.hoisted(() => ({
     Promise.resolve({ anyFailed: false }),
   ),
   scoreLead: vi.fn(() => 100),
+  checkAvailability: vi.fn((_iso: string, _opts?: unknown) =>
+    Promise.resolve(true),
+  ),
+  findNextAvailableSlots: vi.fn((_iso: string, _count?: number, _opts?: unknown) =>
+    Promise.resolve([] as string[]),
+  ),
+  addCalendarEvent: vi.fn(() => Promise.resolve("evt-1" as string | null)),
+  leadInsertValues: vi.fn(),
+  bookingAttemptInsertValues: vi.fn(),
 }));
 
 // Groq SDK: capture the system prompt passed to the model.
@@ -43,8 +52,13 @@ vi.mock("groq-sdk", () => ({
 // @workspace/db connects to Postgres on import — mock it. insert(...).values(...)
 // is used both awaited directly (booking attempts) and with .returning() (leads),
 // so values() returns a thenable that also exposes returning().
+// Unique table sentinels so the insert mock can tell which table a call targets.
+const LEADS_TABLE = { __table: "leads" };
+const BOOKING_ATTEMPTS_TABLE = { __table: "booking_attempts" };
+
 vi.mock("@workspace/db", () => {
-  const values = () => {
+  const makeValues = (recorder: (v: unknown) => void) => (vals: unknown) => {
+    recorder(vals);
     const p: Promise<unknown> & { returning?: () => Promise<unknown[]> } =
       Promise.resolve(undefined);
     p.returning = () => Promise.resolve([{ id: "lead-1" }]);
@@ -53,10 +67,15 @@ vi.mock("@workspace/db", () => {
   return {
     db: {
       query: { tenantsTable: { findFirst: mocks.tenantsFindFirst } },
-      insert: () => ({ values }),
+      insert: (table: unknown) => {
+        if (table === BOOKING_ATTEMPTS_TABLE) {
+          return { values: makeValues(mocks.bookingAttemptInsertValues) };
+        }
+        return { values: makeValues(mocks.leadInsertValues) };
+      },
     },
-    leadsTable: {},
-    bookingAttemptsTable: {},
+    leadsTable: LEADS_TABLE,
+    bookingAttemptsTable: BOOKING_ATTEMPTS_TABLE,
   };
 });
 
@@ -66,9 +85,9 @@ vi.mock("../lib/calendar.js", async (importActual) => {
   const actual = await importActual<typeof import("../lib/calendar.js")>();
   return {
     ...actual,
-    checkAvailability: vi.fn(() => Promise.resolve(true)),
-    findNextAvailableSlots: vi.fn(() => Promise.resolve([])),
-    addCalendarEvent: vi.fn(() => Promise.resolve("evt-1")),
+    checkAvailability: mocks.checkAvailability,
+    findNextAvailableSlots: mocks.findNextAvailableSlots,
+    addCalendarEvent: mocks.addCalendarEvent,
   };
 });
 
@@ -108,6 +127,9 @@ describe("POST /api/chat — tier gating on booking", () => {
       choices: [{ message: { content: BOOKING_REPLY } }],
     });
     mocks.notifyBusinessOwner.mockResolvedValue({ anyFailed: false });
+    mocks.checkAvailability.mockResolvedValue(true);
+    mocks.findNextAvailableSlots.mockResolvedValue([]);
+    mocks.addCalendarEvent.mockResolvedValue("evt-1");
   });
 
   it("gives a Pro tenant a null quality score and the general AI prompt", async () => {
@@ -185,5 +207,100 @@ describe("POST /api/chat — tier gating on booking", () => {
     const ownerArgs = mocks.notifyBusinessOwner.mock.calls[0][0];
     expect(ownerArgs.qualityScore).toBe(100);
     expect(ownerArgs.slackAllowed).toBe(true);
+  });
+});
+
+describe("POST /api/chat — fail-closed double-booking safeguard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env["GROQ_API_KEY"] = "test-key";
+    mocks.create.mockResolvedValue({
+      choices: [{ message: { content: BOOKING_REPLY } }],
+    });
+    mocks.notifyBusinessOwner.mockResolvedValue({ anyFailed: false });
+    mocks.checkAvailability.mockResolvedValue(true);
+    mocks.findNextAvailableSlots.mockResolvedValue([]);
+    mocks.addCalendarEvent.mockResolvedValue("evt-1");
+    mocks.tenantsFindFirst.mockResolvedValue({
+      id: "t1",
+      plan: "business",
+      businessType: "general",
+      businessName: "Acme Services",
+      name: "Owner",
+      email: "owner@example.com",
+      services: ["Repairs"],
+      businessDescription: "We fix things",
+    });
+  });
+
+  it("does NOT confirm the booking when the calendar is unreachable (fails closed)", async () => {
+    // Calendar outage — checkAvailability throws.
+    mocks.checkAvailability.mockRejectedValue(new Error("calendar unreachable"));
+
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/api/chat")
+      .send({ messages: [{ role: "user", content: "book me in" }], tenantId: "t1" });
+
+    // 1) The booking must NOT be confirmed.
+    expect(res.status).toBe(200);
+    expect(res.body.bookingConfirmed).toBe(false);
+
+    // 2) No calendar event may be created for an unverified slot.
+    expect(mocks.addCalendarEvent).not.toHaveBeenCalled();
+
+    // 3) The lead is still captured so the owner can follow up manually.
+    expect(mocks.leadInsertValues).toHaveBeenCalledTimes(1);
+
+    // 4) The attempt is logged with available=null (calendar could not be reached)
+    //    and bookingCreated=false.
+    expect(mocks.bookingAttemptInsertValues).toHaveBeenCalledTimes(1);
+    const attempt = mocks.bookingAttemptInsertValues.mock.calls[0][0] as {
+      available: boolean | null;
+      bookingCreated: boolean;
+      calendarEventId: string | null;
+    };
+    expect(attempt.available).toBeNull();
+    expect(attempt.bookingCreated).toBe(false);
+    expect(attempt.calendarEventId).toBeNull();
+
+    // 5) No owner notification / customer-facing confirmation side effects fired.
+    expect(mocks.notifyBusinessOwner).not.toHaveBeenCalled();
+  });
+
+  it("does NOT confirm and offers alternatives when the slot is already taken", async () => {
+    // Slot is taken — checkAvailability returns false; suggest next open times.
+    mocks.checkAvailability.mockResolvedValue(false);
+    const suggestions = [
+      "2099-07-15T15:00:00.000Z",
+      "2099-07-15T16:00:00.000Z",
+    ];
+    mocks.findNextAvailableSlots.mockResolvedValue(suggestions);
+
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/api/chat")
+      .send({ messages: [{ role: "user", content: "book me in" }], tenantId: "t1" });
+
+    // 1) The booking must NOT be confirmed.
+    expect(res.status).toBe(200);
+    expect(res.body.bookingConfirmed).toBe(false);
+
+    // 2) Suggested alternative times are offered back to the customer.
+    expect(res.body.suggestedTimes).toEqual(suggestions);
+
+    // 3) No calendar event is created for a taken slot.
+    expect(mocks.addCalendarEvent).not.toHaveBeenCalled();
+
+    // 4) The attempt is logged as unavailable with the suggested times.
+    expect(mocks.bookingAttemptInsertValues).toHaveBeenCalledTimes(1);
+    const attempt = mocks.bookingAttemptInsertValues.mock.calls[0][0] as {
+      available: boolean | null;
+      bookingCreated: boolean;
+      suggestedTimes: string[];
+    };
+    expect(attempt.available).toBe(false);
+    expect(attempt.bookingCreated).toBe(false);
+    expect(attempt.suggestedTimes).toEqual(suggestions);
   });
 });
