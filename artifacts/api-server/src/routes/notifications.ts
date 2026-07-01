@@ -3,6 +3,7 @@ import { db, notificationSettingsTable, notificationLogsTable } from "@workspace
 import type { NotificationSettings } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { isValidSlackWebhook, postSlack } from "../lib/notifications.js";
+import { hasFeature } from "../tiers.js";
 
 const router: IRouter = Router();
 
@@ -117,6 +118,13 @@ router.post("/notifications/slack/connect", async (req, res) => {
   if (!req.session.userId) { res.status(401).json({ error: "Not authenticated" }); return; }
   const tenantId = await requireTenant(req.session.userId);
   if (!tenantId) { res.status(403).json({ error: "No tenant associated with this account" }); return; }
+
+  // Slack notifications are a Business+ feature.
+  const tenant = await db.query.tenantsTable.findFirst({ where: (t, { eq }) => eq(t.id, tenantId) });
+  if (!hasFeature(tenant?.plan, "slack_notifications")) {
+    res.status(403).json({ error: "Slack notifications require the Business plan or higher. Upgrade to connect Slack." });
+    return;
+  }
 
   const webhookUrl = typeof req.body?.webhookUrl === "string" ? req.body.webhookUrl.trim() : "";
   if (!isValidSlackWebhook(webhookUrl)) {

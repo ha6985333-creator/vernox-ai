@@ -56,6 +56,7 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
+| GET | `/api/tiers` | public | List the 3 pricing tiers (`{key,label,price,priceText,tagline,featured,features[]}`) |
 | POST | `/api/auth/login` | public | Login |
 | POST | `/api/auth/logout` | session | Logout |
 | GET | `/api/auth/me` | session | Current user |
@@ -80,6 +81,7 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 
 ## Product
 
+- **Pricing tiers**: 3 tiers defined in `artifacts/api-server/src/tiers.ts` (single source of truth) — Pro/Business/Enterprise. `normalizePlan()` maps legacy/unknown/`starter` → `pro`. Only three *existing* features are actually gated (all Business+): lead quality scoring, Slack booking notifications, industry-specific AI tailoring — enforced server-side via `hasFeature()`/`featuresForPlan()`, NOT just hidden in UI. Marketing-only features (SMS/email sequences, multi-location, API access, white-label, CRM sync) are advertised but not built/gated. Public `GET /api/tiers` feeds the pricing page + buy form. Admin sets tier at provisioning; `/buy` captures chosen tier + services offered on `purchase_requests`.
 - **Chat widget**: AI-powered lead qualification + appointment booking. The bot is **multipurpose** — each tenant has a `businessType` (set when the admin creates the customer) and the chat handler builds a tailored system prompt via `getSystemPrompt()` so it asks industry-appropriate qualifying questions (e.g. restaurant → party size + date/time, no service address). Non-visit business types skip the address requirement. Tenants without a type default to `general`. The `config.ts` `SYSTEM_PROMPT` is now only a platform-level fallback (email/reviews).
 - **Booking detection**: When AI detects a completed booking it emits `BOOKING_COMPLETE::{}`, triggering a green confirmation banner and sending a notification email.
 - **Customer confirmation emails**: On a completed booking the chat also emails the **customer** a professional HTML confirmation (appointment date/time, business name + phone + address, "reply or call to reschedule/cancel" CTA) via `sendBookingConfirmationToCustomer()`. Every send is logged to `email_logs` (status `sent`/`failed`/`skipped`); the function never throws so a delivery failure can't break the booking. Tenants view the log + counts in the portal **Emails** tab. NOTE: with no verified Resend domain, customer emails to non-owner addresses fail (403) and are logged as `failed` — verify a domain at resend.com/domains and set `FROM_EMAIL` to deliver to real customers.
@@ -104,7 +106,7 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 
 - Business type: per-tenant (chosen in admin "Add Customer"). `config.ts` plumber prompt is only the platform-level fallback.
 - Notify email: ha6985333@gmail.com
-- Pricing: $899/month, no setup fee
+- Pricing: 3 tiers — Pro $899 / Business $1,999 / Enterprise $4,999 per month, no setup fee. Source of truth: `artifacts/api-server/src/tiers.ts`.
 - Payment provider: manual for now — "Buy Now" sends users to `/buy`; team contacts them with a payment link, then emails login credentials after payment. (Payoneer IPN webhook still exists in code but is not the active flow.)
 
 ## Gotchas

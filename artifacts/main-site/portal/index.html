@@ -402,16 +402,22 @@
             </div>
             <div class="setting-row">
               <div class="setting-info"><h3>Plan</h3><p>Your current subscription</p></div>
-              <div class="setting-value">Pro</div>
+              <div class="setting-value" id="settingsPlan">—</div>
             </div>
             <div class="setting-row">
               <div class="setting-info"><h3>AI Business Type</h3><p>The industry your AI assistant is configured for</p></div>
-              <div class="setting-value">Plumber</div>
+              <div class="setting-value" id="settingsBusinessType">—</div>
             </div>
             <div class="setting-row">
               <div class="setting-info"><h3>Widget Status</h3><p>Current state of your chat widget</p></div>
-              <div class="setting-value" style="color:var(--positive);background:var(--positive-bg);border-color:var(--positive-border);">● Active</div>
+              <div class="setting-value" id="settingsStatus">—</div>
             </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h2>Plan Features</h2><p>What's included in your current plan. Upgrade to unlock more.</p></div>
+          <div class="card-body" id="planFeaturesBody">
+            <div class="setting-row"><div class="setting-info"><p>Loading…</p></div></div>
           </div>
         </div>
         <div class="card">
@@ -473,7 +479,7 @@
 
       try {
         const tRes = await fetch("/api/auth/tenant", { credentials: "include" });
-        if (tRes.ok) { const td = await tRes.json(); tenantId = td.tenantId ?? ""; }
+        if (tRes.ok) { const td = await tRes.json(); tenantId = td.tenantId ?? ""; renderPlan(td); }
       } catch (_) {}
 
       const base = window.location.origin;
@@ -491,6 +497,85 @@
       const target = ["reservations","reviews","leads","settings"].includes(hash) ? hash : "reservations";
       const navBtn = document.querySelector(`[data-tab="${target}"]`);
       if (navBtn) switchTab(target, navBtn);
+    }
+
+    // ── Plan / settings rendering ─────────────────────────────────
+    function renderPlan(td) {
+      const planEl = document.getElementById("settingsPlan");
+      if (planEl) planEl.textContent = td.planLabel ? `${td.planLabel} — ${td.planPriceText}/mo` : "Pro";
+      const btEl = document.getElementById("settingsBusinessType");
+      if (btEl) btEl.textContent = td.businessType || "General / Other";
+      const statusEl = document.getElementById("settingsStatus");
+      if (statusEl) {
+        const active = td.status === "active";
+        statusEl.textContent = active ? "● Active" : "● Suspended";
+        if (active) {
+          statusEl.style.color = "var(--positive)";
+          statusEl.style.background = "var(--positive-bg)";
+          statusEl.style.borderColor = "var(--positive-border)";
+        } else {
+          statusEl.style.color = "#92400e";
+          statusEl.style.background = "#fef3c7";
+        }
+      }
+      renderPlanFeatures(td);
+    }
+
+    function renderPlanFeatures(td) {
+      const body = document.getElementById("planFeaturesBody");
+      if (!body) return;
+      const f = td.features || {};
+      // Enforced, tier-gated features (all Business+). Locked ones show an upgrade hint.
+      const rows = [
+        { name: "Lead quality scoring", desc: "Rank each lead by completeness so you follow up on the best ones first.", on: !!f.leadScoring },
+        { name: "Slack booking notifications", desc: "Get instant booking alerts in a Slack channel.", on: !!f.slackNotifications },
+        { name: "Industry-specific AI tailoring", desc: "The assistant asks questions tuned to your exact business type.", on: !!f.industrySpecificAI },
+      ];
+      body.replaceChildren();
+      for (const r of rows) {
+        const row = document.createElement("div");
+        row.className = "setting-row";
+        const info = document.createElement("div");
+        info.className = "setting-info";
+        const h3 = document.createElement("h3");
+        h3.textContent = r.name;
+        const p = document.createElement("p");
+        p.textContent = r.on ? r.desc : r.desc + " Upgrade to Business to unlock.";
+        info.append(h3, p);
+        const val = document.createElement("div");
+        val.className = "setting-value";
+        if (r.on) {
+          val.textContent = "✓ Included";
+          val.style.color = "var(--positive)";
+          val.style.background = "var(--positive-bg)";
+          val.style.borderColor = "var(--positive-border)";
+        } else {
+          val.textContent = "🔒 Locked";
+          val.style.color = "var(--muted)";
+        }
+        row.append(info, val);
+        body.appendChild(row);
+      }
+      const anyLocked = rows.some(r => !r.on);
+      if (anyLocked) {
+        const cta = document.createElement("div");
+        cta.className = "setting-row";
+        const info = document.createElement("div");
+        info.className = "setting-info";
+        const h3 = document.createElement("h3");
+        h3.textContent = "Want more?";
+        const p = document.createElement("p");
+        p.textContent = "Contact your account team to upgrade your plan and unlock these features.";
+        info.append(h3, p);
+        const val = document.createElement("a");
+        val.className = "setting-value";
+        val.href = "mailto:ha6985333@gmail.com?subject=Upgrade%20my%20Vernox%20plan";
+        val.textContent = "Upgrade";
+        val.style.color = "var(--accent, #4f46e5)";
+        val.style.textDecoration = "none";
+        cta.append(info, val);
+        body.appendChild(cta);
+      }
     }
 
     // ── Tab switching ─────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import Groq from "groq-sdk";
 import { getBusinessType, getSystemPrompt } from "../businessTypes.js";
+import { featuresForPlan } from "../tiers.js";
 import { sendConfirmationEmail, sendBookingConfirmationToCustomer, type BookingDetails } from "../lib/email.js";
 import { notifyBusinessOwner, scoreLead } from "../lib/notifications.js";
 import {
@@ -240,6 +241,7 @@ router.post("/chat", async (req, res) => {
     let businessHours: BusinessHours | undefined;
     let timeZone = SERVER_TIMEZONE;
     let durationMinutes = 60;
+    let plan: string | null = null;
     if (tenantId) {
       const tenant = await db.query.tenantsTable.findFirst({
         where: (t, { eq }) => eq(t.id, tenantId),
@@ -256,12 +258,18 @@ router.post("/chat", async (req, res) => {
         businessHours = tenant.businessHours ?? undefined;
         timeZone = tenant.timezone ?? SERVER_TIMEZONE;
         durationMinutes = tenant.bookingDurationMinutes ?? 60;
+        plan = tenant.plan;
       } else {
         req.log.warn({ tenantId }, "chat: tenantId provided but no matching tenant found; falling back to general prompt");
       }
     }
-    const businessType = getBusinessType(businessTypeValue);
-    const systemPrompt = getSystemPrompt(businessTypeValue, businessName, {
+    // Plan-based feature gating. Industry-specific AI tailoring is Business+; on
+    // lower plans the bot falls back to the generic prompt/business type so it
+    // still books appointments but doesn't ask industry-specific questions.
+    const features = featuresForPlan(plan);
+    const effectiveBusinessType = features.industrySpecificAI ? businessTypeValue : "general";
+    const businessType = getBusinessType(effectiveBusinessType);
+    const systemPrompt = getSystemPrompt(effectiveBusinessType, businessName, {
       services,
       description: businessDescription,
     });
@@ -377,7 +385,8 @@ router.post("/chat", async (req, res) => {
     // Owner notification: for tenant bookings this runs per-tenant below
     // (email + Slack + delivery logging) via notifyBusinessOwner. For the
     // tenant-less fallback path, send the legacy global owner email.
-    const qualityScore = scoreLead(booking);
+    // Lead quality scoring is Business+; on lower plans we don't compute a score.
+    const qualityScore = features.leadScoring ? scoreLead(booking) : null;
     if (!tenantId) {
       try {
         await sendConfirmationEmail(booking);
@@ -448,6 +457,7 @@ router.post("/chat", async (req, res) => {
         leadId: capturedLeadId,
         whenText: formatSlot(booking.datetime, timeZone),
         qualityScore,
+        slackAllowed: features.slackNotifications,
       });
       // Only a genuine delivery failure should trip the monitoring alert below.
       // Intentional skips (channel disabled / quiet hours) are not failures.

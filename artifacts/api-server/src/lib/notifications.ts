@@ -141,7 +141,7 @@ function quietSkip(settings: NotificationSettings, tz: string | null): string | 
  * must not break if a notification fails.
  */
 export async function notifyBusinessOwner(input: OwnerNotifyInput): Promise<OwnerNotifyResult> {
-  const { tenantId, tenant, booking, leadId, whenText, qualityScore } = input;
+  const { tenantId, tenant, booking, leadId, whenText, qualityScore, slackAllowed = false } = input;
   const result: OwnerNotifyResult = { attempted: false, anySent: false, anyFailed: false, quietReason: null };
 
   let settings: NotificationSettings | undefined;
@@ -163,7 +163,9 @@ export async function notifyBusinessOwner(input: OwnerNotifyInput): Promise<Owne
   const tz = tenant?.timezone ?? null;
 
   const wantEmail = emailEnabled && emailOnBooking;
-  const wantSlack = slackEnabled && slackOnBooking && !!slackWebhookUrl;
+  // Slack is a Business+ feature: even if a tenant has a stored webhook + toggle,
+  // a downgraded/Pro plan must not deliver Slack notifications.
+  const wantSlack = slackAllowed && slackEnabled && slackOnBooking && !!slackWebhookUrl;
 
   // Quiet hours/days apply to every channel.
   if (settings) {
@@ -192,7 +194,7 @@ export async function notifyBusinessOwner(input: OwnerNotifyInput): Promise<Owne
   }
 
   if (wantSlack) {
-    if (slackHighValueOnly && qualityScore < 75) {
+    if (slackHighValueOnly && qualityScore !== null && qualityScore < 75) {
       await logNotification({ tenantId, leadId, channel: "slack", status: "skipped", reason: "low quality score", qualityScore });
     } else {
       tally(await sendSlack(slackWebhookUrl!, input));
@@ -218,7 +220,10 @@ async function sendOwnerEmail(input: OwnerNotifyInput, settings: NotificationSet
   }
 
   const bizName = tenant?.businessName || BUSINESS_NAME;
-  const q = qualityLabel(qualityScore);
+  const q = qualityScore !== null ? qualityLabel(qualityScore) : null;
+  const qualityRow = q
+    ? `<tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Lead Quality</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;"><span style="display:inline-block;padding:4px 12px;border-radius:999px;background:${q.color};color:#fff;font-weight:600;font-size:0.85rem;">${q.text} · ${qualityScore}/100</span></td></tr>`
+    : "";
   const subject = `🔔 New Booking: ${booking.name} — ${whenText}`;
 
   try {
@@ -239,7 +244,7 @@ async function sendOwnerEmail(input: OwnerNotifyInput, settings: NotificationSet
             <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Date &amp; Time</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${esc(whenText)}</td></tr>
             <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Phone</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${esc(booking.phone)}</td></tr>
             <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Customer Email</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-weight:600;">${esc(booking.email)}</td></tr>
-            <tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;">Lead Quality</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;"><span style="display:inline-block;padding:4px 12px;border-radius:999px;background:${q.color};color:#fff;font-weight:600;font-size:0.85rem;">${q.text} · ${qualityScore}/100</span></td></tr>
+            ${qualityRow}
           </table>
           <p style="color:#6b7280;font-size:0.85rem;">This event has been added to your Google Calendar automatically.</p>
           <p style="color:#6b7280;font-size:0.85rem;">— ${esc(bizName)} chat widget</p>
@@ -290,23 +295,25 @@ export async function postSlack(webhookUrl: string, payload: unknown): Promise<{
 
 async function sendSlack(webhookUrl: string, input: OwnerNotifyInput): Promise<NotifyStatus> {
   const { tenantId, tenant, booking, leadId, whenText, qualityScore } = input;
-  const q = qualityLabel(qualityScore);
+  const q = qualityScore !== null ? qualityLabel(qualityScore) : null;
   const bizName = tenant?.businessName || BUSINESS_NAME;
+
+  const fields = [
+    { title: "Customer", value: booking.name, short: true },
+    { title: "Phone", value: booking.phone, short: true },
+    { title: "Service", value: booking.issue, short: false },
+    { title: "Appointment", value: whenText, short: false },
+    { title: "Email", value: booking.email, short: true },
+  ];
+  if (q) fields.push({ title: "Lead Quality", value: `${q.text} · ${qualityScore}/100`, short: true });
 
   const payload = {
     text: `🔔 New Booking: ${booking.name}`,
     attachments: [
       {
-        color: q.color,
+        color: q?.color ?? "#4f46e5",
         title: `New appointment for ${bizName}`,
-        fields: [
-          { title: "Customer", value: booking.name, short: true },
-          { title: "Phone", value: booking.phone, short: true },
-          { title: "Service", value: booking.issue, short: false },
-          { title: "Appointment", value: whenText, short: false },
-          { title: "Email", value: booking.email, short: true },
-          { title: "Lead Quality", value: `${q.text} · ${qualityScore}/100`, short: true },
-        ],
+        fields,
       },
     ],
   };

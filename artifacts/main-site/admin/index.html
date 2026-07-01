@@ -124,9 +124,9 @@
       <div class="table-wrap" style="margin-bottom:32px;">
         <table>
           <thead>
-            <tr><th>Name</th><th>Business</th><th>Email</th><th>Phone</th><th>Status</th><th>Received</th><th>Actions</th></tr>
+            <tr><th>Name</th><th>Business</th><th>Tier</th><th>Services</th><th>Email</th><th>Phone</th><th>Status</th><th>Received</th><th>Actions</th></tr>
           </thead>
-          <tbody id="salesBody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+          <tbody id="salesBody"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
         </table>
       </div>
 
@@ -160,9 +160,9 @@
       <div class="field">
         <label>Plan</label>
         <select id="newPlan">
-          <option value="starter">Starter</option>
-          <option value="pro">Pro</option>
-          <option value="enterprise">Enterprise</option>
+          <option value="pro">Pro — $899/mo</option>
+          <option value="business">Business — $1,999/mo</option>
+          <option value="enterprise">Enterprise — $4,999/mo</option>
         </select>
       </div>
       <div class="modal-actions">
@@ -236,7 +236,7 @@
       if (!sales || sales.length === 0) {
         const tr = document.createElement("tr");
         const td = document.createElement("td");
-        td.colSpan = 7; td.className = "empty"; td.textContent = "No sale requests yet.";
+        td.colSpan = 9; td.className = "empty"; td.textContent = "No sale requests yet.";
         tr.appendChild(td); body.appendChild(tr); return;
       }
       // Build rows as DOM nodes with textContent — user-supplied fields are never
@@ -251,6 +251,22 @@
 
         const bizTd = document.createElement("td");
         bizTd.textContent = s.businessName;
+
+        const tierTd = document.createElement("td");
+        const tierBadge = document.createElement("span");
+        tierBadge.className = "badge badge-plan";
+        tierBadge.textContent = planLabel(s.tier);
+        tierTd.appendChild(tierBadge);
+
+        const servicesTd = document.createElement("td");
+        if (Array.isArray(s.services) && s.services.length) {
+          servicesTd.textContent = s.services.join(", ");
+          servicesTd.style.maxWidth = "220px";
+          servicesTd.title = s.services.join(", ");
+        } else {
+          servicesTd.textContent = "—";
+          servicesTd.style.color = "var(--muted)";
+        }
 
         const emailTd = document.createElement("td");
         const emailLink = document.createElement("a");
@@ -285,7 +301,7 @@
         select.addEventListener("change", () => setSaleStatus(s.id, select.value));
         actionTd.appendChild(select);
 
-        tr.append(nameTd, bizTd, emailTd, phoneTd, statusTd, dateTd, actionTd);
+        tr.append(nameTd, bizTd, tierTd, servicesTd, emailTd, phoneTd, statusTd, dateTd, actionTd);
         body.appendChild(tr);
       }
     }
@@ -303,7 +319,7 @@
           <td>${esc(t.businessName || "—")}</td>
           <td>${esc(BUSINESS_TYPE_LABELS[t.businessType] || t.businessType || "—")}</td>
           <td>${esc(t.email)}</td>
-          <td><span class="badge badge-plan">${esc(t.plan)}</span></td>
+          <td><span class="badge badge-plan">${esc(planLabel(t.plan))}</span></td>
           <td><span class="badge badge-${t.status}">${esc(t.status)}</span></td>
           <td>${new Date(t.createdAt).toLocaleDateString()}</td>
           <td>
@@ -325,6 +341,12 @@
       else { alert(res?.error || "Failed to delete customer."); }
     }
     function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+    // Normalize any stored/legacy plan value to its current display label.
+    const PLAN_LABELS = { pro: "Pro", business: "Business", enterprise: "Enterprise" };
+    function planLabel(p) {
+      const key = String(p ?? "").toLowerCase().trim();
+      return PLAN_LABELS[key] || "Pro";
+    }
     function copyText(elId) {
       const text = document.getElementById(elId).textContent;
       navigator.clipboard.writeText(text).then(() => {
