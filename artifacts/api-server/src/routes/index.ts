@@ -11,6 +11,7 @@ import emailsRouter from "./emails";
 import notificationsRouter from "./notifications";
 import buyRouter from "./buy";
 import availabilityRouter from "./availability";
+import upgradesRouter from "./upgrades";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(emailsRouter);
 router.use(notificationsRouter);
 router.use(buyRouter);
 router.use(availabilityRouter);
+router.use(upgradesRouter);
 
 export default router;

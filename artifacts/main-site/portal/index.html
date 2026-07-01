@@ -64,6 +64,19 @@
     .btn-google svg { flex-shrink: 0; }
     .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
+    /* ── Modal ───────────────────────────────────────────────── */
+    .hidden { display: none !important; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+    .modal { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 24px; width: 100%; max-width: 420px; }
+    .modal h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: 6px; }
+    .modal .modal-sub { font-size: 0.82rem; color: var(--muted); margin-bottom: 16px; }
+    .modal .field { margin-bottom: 14px; }
+    .modal .field label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; }
+    .modal .field select, .modal .field textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; font-family: inherit; }
+    .modal .field textarea { resize: vertical; min-height: 68px; }
+    .modal .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+    .modal .error-toast { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 6px; padding: 8px 11px; font-size: 0.8rem; margin-bottom: 12px; display: none; }
+
     /* ── Cards ───────────────────────────────────────────────── */
     .card { background: #fff; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 20px; overflow: hidden; }
     .card-header { padding: 18px 22px 14px; border-bottom: 1px solid var(--border); }
@@ -469,6 +482,26 @@
     </div>
   </div>
 
+  <div class="modal-overlay hidden" id="upgradeModal">
+    <div class="modal">
+      <h2>Request a plan upgrade</h2>
+      <p class="modal-sub">Choose the plan you'd like. Your account team will reach out to finish the switch — no restart needed once it's applied.</p>
+      <div class="error-toast" id="upgradeError"></div>
+      <div class="field">
+        <label>Upgrade to</label>
+        <select id="upgradePlanSelect"></select>
+      </div>
+      <div class="field">
+        <label>Anything we should know? (optional)</label>
+        <textarea id="upgradeNote" placeholder="e.g. we're opening a second location next month"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="upgradeCancelBtn" type="button">Cancel</button>
+        <button class="btn" id="upgradeSubmitBtn" type="button">Send Request</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // ── Init ─────────────────────────────────────────────────────
     let tenantId = "";
@@ -491,9 +524,17 @@
       } catch (_) {}
 
       try {
+        const uRes = await fetch("/api/upgrade-request", { credentials: "include" });
+        if (uRes.ok) { const ud = await uRes.json(); pendingUpgrade = ud.pending || null; }
+      } catch (_) {}
+
+      try {
         const tRes = await fetch("/api/auth/tenant", { credentials: "include" });
         if (tRes.ok) { const td = await tRes.json(); tenantId = td.tenantId ?? ""; renderPlan(td); }
       } catch (_) {}
+
+      document.getElementById("upgradeCancelBtn").addEventListener("click", () => document.getElementById("upgradeModal").classList.add("hidden"));
+      document.getElementById("upgradeSubmitBtn").addEventListener("click", submitUpgradeRequest);
 
       const base = window.location.origin;
       const snippetSrc = `${base}/api/embed/${tenantId || "YOUR_TENANT_ID"}/widget.js`;
@@ -570,24 +611,100 @@
         body.appendChild(row);
       }
       const anyLocked = rows.some(r => !r.on);
-      if (anyLocked) {
-        const cta = document.createElement("div");
-        cta.className = "setting-row";
-        const info = document.createElement("div");
-        info.className = "setting-info";
-        const h3 = document.createElement("h3");
-        h3.textContent = "Want more?";
-        const p = document.createElement("p");
-        p.textContent = "Contact your account team to upgrade your plan and unlock these features.";
+      currentPlan = td.plan || "pro";
+      if (anyLocked) renderUpgradeCta(body);
+    }
+
+    // Plan key of the logged-in tenant + any open upgrade request they've made.
+    let currentPlan = "pro";
+    let pendingUpgrade = null;
+    const PLAN_RANK = { pro: 1, business: 2, enterprise: 3 };
+    const PLAN_META = {
+      business: { label: "Business", priceText: "$1,999" },
+      enterprise: { label: "Enterprise", priceText: "$4,999" },
+    };
+
+    function renderUpgradeCta(body) {
+      const cta = document.createElement("div");
+      cta.className = "setting-row";
+      const info = document.createElement("div");
+      info.className = "setting-info";
+      const h3 = document.createElement("h3");
+      const p = document.createElement("p");
+
+      if (pendingUpgrade) {
+        const meta = PLAN_META[pendingUpgrade.requestedPlan] || { label: pendingUpgrade.requestedPlan };
+        h3.textContent = "Upgrade requested";
+        p.textContent = `We got your request to move to ${meta.label}. Your account team will be in touch shortly to finish the switch.`;
         info.append(h3, p);
-        const val = document.createElement("a");
+        const val = document.createElement("div");
         val.className = "setting-value";
-        val.href = "mailto:ha6985333@gmail.com?subject=Upgrade%20my%20Vernox%20plan";
-        val.textContent = "Upgrade";
-        val.style.color = "var(--accent, #4f46e5)";
-        val.style.textDecoration = "none";
+        val.textContent = "⏳ Pending";
+        val.style.color = "var(--muted)";
         cta.append(info, val);
-        body.appendChild(cta);
+      } else {
+        h3.textContent = "Want more?";
+        p.textContent = "Upgrade your plan to unlock these features. Request it here and your account team will get you set up.";
+        info.append(h3, p);
+        const val = document.createElement("button");
+        val.className = "btn";
+        val.type = "button";
+        val.textContent = "Request Upgrade";
+        val.style.padding = "8px 16px";
+        val.addEventListener("click", openUpgradeModal);
+        cta.append(info, val);
+      }
+      body.appendChild(cta);
+    }
+
+    function openUpgradeModal() {
+      const sel = document.getElementById("upgradePlanSelect");
+      sel.replaceChildren();
+      // Only offer plans strictly above the current one.
+      for (const key of ["business", "enterprise"]) {
+        if (PLAN_RANK[key] > (PLAN_RANK[currentPlan] || 1)) {
+          const opt = document.createElement("option");
+          const meta = PLAN_META[key];
+          opt.value = key;
+          opt.textContent = `${meta.label} — ${meta.priceText}/mo`;
+          sel.appendChild(opt);
+        }
+      }
+      document.getElementById("upgradeNote").value = "";
+      const err = document.getElementById("upgradeError");
+      err.style.display = "none";
+      document.getElementById("upgradeModal").classList.remove("hidden");
+    }
+
+    async function submitUpgradeRequest() {
+      const btn = document.getElementById("upgradeSubmitBtn");
+      const err = document.getElementById("upgradeError");
+      err.style.display = "none";
+      const requestedPlan = document.getElementById("upgradePlanSelect").value;
+      const note = document.getElementById("upgradeNote").value.trim();
+      if (!requestedPlan) { err.textContent = "Please choose a plan."; err.style.display = "block"; return; }
+      btn.disabled = true; btn.textContent = "Sending…";
+      try {
+        const res = await fetch("/api/upgrade-request", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requestedPlan, note }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { err.textContent = data.error || "Something went wrong."; err.style.display = "block"; return; }
+        pendingUpgrade = { requestedPlan, status: "new" };
+        document.getElementById("upgradeModal").classList.add("hidden");
+        // Re-render the plan card so it now shows the pending state.
+        const body = document.getElementById("planFeaturesBody");
+        const last = body.lastElementChild;
+        if (last) last.remove();
+        renderUpgradeCta(body);
+      } catch (_) {
+        err.textContent = "Network error. Please try again.";
+        err.style.display = "block";
+      } finally {
+        btn.disabled = false; btn.textContent = "Send Request";
       }
     }
 

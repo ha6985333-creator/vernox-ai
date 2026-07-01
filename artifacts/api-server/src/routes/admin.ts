@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
 import { db, type BusinessHours } from "@workspace/db";
-import { tenantsTable, usersTable, purchaseRequestsTable } from "@workspace/db";
+import { tenantsTable, usersTable, purchaseRequestsTable, upgradeRequestsTable } from "@workspace/db";
 import { desc, count, eq } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth.js";
 import { createTenantWithCredentials } from "../lib/accounts.js";
 import { BUSINESS_TYPES, isValidBusinessType } from "../businessTypes.js";
 import { normalizeBusinessHours } from "../lib/businessHours.js";
+import { isValidPlan } from "../tiers.js";
 
 const router: IRouter = Router();
 router.use(requireAdmin);
@@ -136,6 +137,37 @@ router.patch("/purchase-requests/:id/status", async (req, res) => {
   res.json({ ok: true });
 });
 
+router.get("/upgrade-requests", async (_req, res) => {
+  const requests = await db
+    .select({
+      id: upgradeRequestsTable.id,
+      tenantId: upgradeRequestsTable.tenantId,
+      currentPlan: upgradeRequestsTable.currentPlan,
+      requestedPlan: upgradeRequestsTable.requestedPlan,
+      note: upgradeRequestsTable.note,
+      status: upgradeRequestsTable.status,
+      createdAt: upgradeRequestsTable.createdAt,
+      tenantName: tenantsTable.name,
+      businessName: tenantsTable.businessName,
+      email: tenantsTable.email,
+    })
+    .from(upgradeRequestsTable)
+    .leftJoin(tenantsTable, eq(upgradeRequestsTable.tenantId, tenantsTable.id))
+    .orderBy(desc(upgradeRequestsTable.createdAt));
+  res.json(requests);
+});
+
+router.patch("/upgrade-requests/:id/status", async (req, res) => {
+  const { status } = req.body as { status?: string };
+  const allowed = ["new", "contacted", "applied", "declined"];
+  if (!status || !allowed.includes(status)) {
+    res.status(400).json({ error: `status must be one of: ${allowed.join(", ")}` });
+    return;
+  }
+  await db.update(upgradeRequestsTable).set({ status }).where(eq(upgradeRequestsTable.id, req.params.id!));
+  res.json({ ok: true });
+});
+
 router.get("/tenants/:id", async (req, res) => {
   const tenant = await db.query.tenantsTable.findFirst({ where: (t, { eq }) => eq(t.id, req.params.id!) });
   if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
@@ -171,15 +203,26 @@ router.patch("/tenants/:id", async (req, res) => {
   const existing = await db.query.tenantsTable.findFirst({ where: (t, { eq: e }) => e(t.id, id) });
   if (!existing) { res.status(404).json({ error: "Tenant not found" }); return; }
 
+  const body = req.body as Record<string, unknown>;
+  let plan: string | undefined;
+  if (body.plan !== undefined) {
+    if (typeof body.plan !== "string" || !isValidPlan(body.plan)) {
+      res.status(400).json({ error: "Invalid plan" });
+      return;
+    }
+    plan = body.plan;
+  }
+
   let settings: TenantSettings;
   try {
-    settings = parseTenantSettings(req.body as Record<string, unknown>);
+    settings = parseTenantSettings(body);
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "Invalid tenant settings" });
     return;
   }
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
+  if (plan !== undefined) updates.plan = plan;
   if (settings.businessType !== undefined) updates.businessType = settings.businessType;
   if (settings.businessName !== undefined) updates.businessName = settings.businessName || null;
   if (settings.services !== undefined) updates.services = settings.services.length ? settings.services : null;

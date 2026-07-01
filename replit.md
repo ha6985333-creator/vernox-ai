@@ -43,7 +43,7 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 - `artifacts/api-server/src/routes/` — auth, admin, chat, emails, webhooks
 - `artifacts/api-server/src/lib/` — auth helpers, email, accounts, logger, `sms.ts` (Twilio REST), `followUpSequence.ts` (automated drip engine + scheduler)
 - `artifacts/api-server/public/` — static frontend files
-- `lib/db/src/schema/` — tenants (incl. `businessPhone`/`businessAddress`) + users + `email_logs` Drizzle tables
+- `lib/db/src/schema/` — tenants (incl. `businessPhone`/`businessAddress`) + users + `email_logs` + `upgrade_requests` Drizzle tables
 
 ## Pages
 
@@ -67,8 +67,13 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 | POST | `/api/check-availability` | public | Check a Google Calendar slot — body `{requestedDateTime, timezone?, durationMinutes?, tenantId?}` → `{available, suggestedTimes, ...}`; logs to `availability_checks`; 502 on calendar failure (rate-limited 20/min per IP) |
 | GET | `/api/admin/tenants` | admin | List all tenants |
 | POST | `/api/admin/tenants` | admin | Manually create tenant (accepts `businessType`, `businessName`) |
+| PATCH | `/api/admin/tenants/:id` | admin | Edit an existing tenant — accepts `plan` (pro/business/enterprise), `businessType`, and other per-tenant settings. Changing `plan` re-gates features immediately (read from DB per request) |
 | GET | `/api/admin/business-types` | admin | List selectable business types (`{value,label}`) |
 | PATCH | `/api/admin/tenants/:id/status` | admin | Suspend/activate |
+| GET | `/api/admin/upgrade-requests` | admin | List all tenant upgrade requests (joined w/ tenant name/email) |
+| PATCH | `/api/admin/upgrade-requests/:id/status` | admin | Set request status (new/contacted/applied/declined) |
+| GET | `/api/upgrade-request` | tenant | This tenant's most recent open (new/contacted) upgrade request, or `{pending:null}` |
+| POST | `/api/upgrade-request` | tenant | Request a higher plan — body `{requestedPlan, note?}`; rejects same/lower plan; reuses an existing open request instead of duplicating |
 | GET | `/api/admin/stats` | admin | Stats counters |
 | GET | `/api/admin/purchase-requests` | admin | List all sale requests |
 | PATCH | `/api/admin/purchase-requests/:id/status` | admin | Set status (new/contacted/paid/closed) |
@@ -96,7 +101,8 @@ A multitenant SaaS platform with an AI-powered lead qualification and appointmen
 - **Automated follow-up sequences** (Business+): After a lead is captured, a fixed multi-step nurture drip fires over ~3 days via a 5-min scheduler (`startFollowUpScheduler()` in `index.ts`, engine in `lib/followUpSequence.ts`). Cadence: email @2h → email + SMS @24h → SMS @72h (`FOLLOW_UP_SEQUENCE`, `STEP_COUNT`). State lives on the lead row (`followUpCount`, `nextFollowUpDate`, `lastContactDate`, `followUpPaused`) plus `notification_settings.followUpSequencesEnabled` (tenant master switch) — no new table. Gated on the `follow_up_sequences` feature (rank 2 = Business+) via `hasFeature()`, enforced server-side on every tick (a downgraded tenant just stops getting new steps). SMS uses Twilio REST (`lib/sms.ts`, no SDK) and degrades gracefully when `TWILIO_*` env is unset (email steps still send; SMS logged `skipped`). Every channel send is logged to `lead_follow_ups`. A 1h min-gap guard prevents double-sends vs manual follow-ups. Tenants view active sequences, toggle the master switch, and pause/resume per-lead in the portal **Leads** tab; Pro tenants see an upgrade prompt.
 - **Lead quality score**: `scoreLead()` — simple completeness signal (0-100), 25 pts each for phone/email/service/datetime. Shown in owner notifications + portal log. Not a predictive model.
 - **Slack connect**: portal pastes an incoming-webhook URL → `POST /api/notifications/slack/connect` validates (https + `hooks.slack.com` host only, SSRF guard) and sends a live test message before persisting. The stored webhook is write-only (never returned to the client).
-- **Admin dashboard**: Master admin can view all customers, create accounts manually, suspend/activate tenants, and review/triage incoming sale requests.
+- **Self-serve plan upgrades**: Tenants request a higher plan from the portal Plan Features card (replaces the old `mailto` link) — a modal captures the target plan + optional note and POSTs to `/api/upgrade-request`, saving an `upgrade_requests` row for the admin to action. The card shows a "⏳ Pending" state while a request is open (one open request per tenant; a new request reuses/overwrites the open one). Admin reviews them in the dashboard **Upgrade Requests** table and can "Apply Plan" (sets the tenant plan via `PATCH /api/admin/tenants/:id` → status `applied`) or set status manually. Admin can also **Edit** any tenant's plan + business type inline from the customers table. Because feature gating (`hasFeature`/`featuresForPlan`) reads the tenant's plan from the DB on every request, a plan change re-gates lead scoring / Slack / industry-AI immediately with no restart.
+- **Admin dashboard**: Master admin can view all customers, create accounts manually, suspend/activate tenants, edit a tenant's plan/business type, review/action upgrade requests, and review/triage incoming sale requests.
 - **Sale notifications**: The `/buy` form POSTs to `/api/buy` → saves a `purchase_requests` row, emails the owner (NOTIFY_EMAIL) a notification, and emails the customer a confirmation. Each request shows in the admin "Sale Requests" table with a status dropdown (new/contacted/paid/closed) and a "New Sale Requests" stat card.
 - **Auto-provisioning**: Payoneer IPN webhook at `/api/webhooks/payoneer` — when a payment completes, a tenant account is created and credentials are emailed automatically.
 

@@ -7,3 +7,4 @@ export * from "./bookings";
 export * from "./emailLogs";
 export * from "./notificationSettings";
 export * from "./notificationLogs";
+export * from "./upgradeRequests";

@@ -131,6 +131,18 @@
       </div>
 
       <div class="section-header">
+        <span class="section-title">Upgrade Requests</span>
+      </div>
+      <div class="table-wrap" style="margin-bottom:32px;">
+        <table>
+          <thead>
+            <tr><th>Customer</th><th>Business</th><th>Email</th><th>Current</th><th>Requested</th><th>Note</th><th>Status</th><th>Received</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="upgradesBody"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="section-header">
         <span class="section-title">All Customers</span>
         <button class="btn btn-sm" id="addBtn">+ Add Customer</button>
       </div>
@@ -172,6 +184,32 @@
     </div>
   </div>
 
+  <div class="modal-overlay hidden" id="editModal">
+    <div class="modal">
+      <h2>Edit Customer</h2>
+      <div class="error-toast" id="editError"></div>
+      <p style="margin:0 0 16px;font-size:0.82rem;color:var(--muted);" id="editTenantLabel"></p>
+      <div class="field">
+        <label>Business Type</label>
+        <select id="editBusinessType"><option value="general">General / Other</option></select>
+        <p style="margin:6px 0 0;font-size:0.78rem;color:var(--muted);">The bot tailors its questions to this industry.</p>
+      </div>
+      <div class="field">
+        <label>Plan</label>
+        <select id="editPlan">
+          <option value="pro">Pro — $899/mo</option>
+          <option value="business">Business — $1,999/mo</option>
+          <option value="enterprise">Enterprise — $4,999/mo</option>
+        </select>
+        <p style="margin:6px 0 0;font-size:0.78rem;color:var(--muted);">Changing the plan re-gates features immediately — no restart needed.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="editCancelBtn">Cancel</button>
+        <button class="btn" id="editSaveBtn">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay hidden" id="credsModal">
     <div class="modal">
       <h2>Account Created ✓</h2>
@@ -209,7 +247,7 @@
       document.getElementById("adminEmail").textContent = me.email;
       document.getElementById("topbarUser").textContent = me.email;
       await loadBusinessTypes();
-      loadStats(); loadTenants(); loadSales();
+      loadStats(); loadTenants(); loadSales(); loadUpgrades();
     }
     let BUSINESS_TYPE_LABELS = {};
     async function loadBusinessTypes() {
@@ -309,6 +347,110 @@
       await apiFetch(`/admin/purchase-requests/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
       loadSales();
     }
+    const UPGRADE_STATUSES = ["new", "contacted", "applied", "declined"];
+    async function loadUpgrades() {
+      const reqs = await apiFetch("/admin/upgrade-requests");
+      const body = document.getElementById("upgradesBody");
+      body.replaceChildren();
+      if (!Array.isArray(reqs) || reqs.length === 0) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 9; td.className = "empty"; td.textContent = "No upgrade requests yet.";
+        tr.appendChild(td); body.appendChild(tr); return;
+      }
+      for (const r of reqs) {
+        const tr = document.createElement("tr");
+
+        const nameTd = document.createElement("td");
+        const strong = document.createElement("strong");
+        strong.textContent = r.tenantName || "—";
+        nameTd.appendChild(strong);
+
+        const bizTd = document.createElement("td");
+        bizTd.textContent = r.businessName || "—";
+
+        const emailTd = document.createElement("td");
+        if (r.email) {
+          const emailLink = document.createElement("a");
+          emailLink.href = "mailto:" + encodeURIComponent(r.email);
+          emailLink.textContent = r.email;
+          emailTd.appendChild(emailLink);
+        } else { emailTd.textContent = "—"; }
+
+        const curTd = document.createElement("td");
+        const curBadge = document.createElement("span");
+        curBadge.className = "badge badge-plan";
+        curBadge.textContent = planLabel(r.currentPlan);
+        curTd.appendChild(curBadge);
+
+        const reqTd = document.createElement("td");
+        const reqBadge = document.createElement("span");
+        reqBadge.className = "badge badge-plan";
+        reqBadge.textContent = planLabel(r.requestedPlan);
+        reqTd.appendChild(reqBadge);
+
+        const noteTd = document.createElement("td");
+        if (r.note) { noteTd.textContent = r.note; noteTd.style.maxWidth = "220px"; noteTd.title = r.note; }
+        else { noteTd.textContent = "—"; noteTd.style.color = "var(--muted)"; }
+
+        const statusTd = document.createElement("td");
+        const badge = document.createElement("span");
+        badge.className = "badge badge-" + (r.status === "new" ? "active" : "plan");
+        badge.textContent = r.status;
+        statusTd.appendChild(badge);
+
+        const dateTd = document.createElement("td");
+        dateTd.textContent = new Date(r.createdAt).toLocaleDateString();
+
+        const actionTd = document.createElement("td");
+        const wrap = document.createElement("div");
+        wrap.style.cssText = "display:flex;gap:6px;align-items:center;";
+        const applyBtn = document.createElement("button");
+        applyBtn.className = "btn btn-sm";
+        applyBtn.textContent = "Apply Plan";
+        applyBtn.title = `Set this customer's plan to ${planLabel(r.requestedPlan)}`;
+        applyBtn.addEventListener("click", () => applyUpgrade(r.id, r.tenantId, r.requestedPlan));
+        const select = document.createElement("select");
+        select.style.cssText = "padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:0.8rem;font-family:inherit;";
+        for (const st of UPGRADE_STATUSES) {
+          const opt = document.createElement("option");
+          opt.value = st; opt.textContent = st;
+          if (st === r.status) opt.selected = true;
+          select.appendChild(opt);
+        }
+        select.addEventListener("change", () => setUpgradeStatus(r.id, select.value));
+        wrap.append(applyBtn, select);
+        actionTd.appendChild(wrap);
+
+        tr.append(nameTd, bizTd, emailTd, curTd, reqTd, noteTd, statusTd, dateTd, actionTd);
+        body.appendChild(tr);
+      }
+    }
+    async function setUpgradeStatus(id, status) {
+      await apiFetch(`/admin/upgrade-requests/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+      loadUpgrades();
+    }
+    async function applyUpgrade(id, tenantId, requestedPlan) {
+      if (!confirm(`Change this customer's plan to ${planLabel(requestedPlan)}? Features re-gate immediately.`)) return;
+      const res = await apiFetch(`/admin/tenants/${tenantId}`, { method: "PATCH", body: JSON.stringify({ plan: requestedPlan }) });
+      if (!res || res.error) { alert(res?.error || "Failed to change plan."); return; }
+      await apiFetch(`/admin/upgrade-requests/${id}/status`, { method: "PATCH", body: JSON.stringify({ status: "applied" }) });
+      loadUpgrades(); loadTenants();
+    }
+    // ── Edit tenant plan / business type ──────────────────────────
+    let editingTenantId = null;
+    async function openEditTenant(id) {
+      const t = await apiFetch(`/admin/tenants/${id}`);
+      if (!t || t.error) { alert(t?.error || "Failed to load customer."); return; }
+      editingTenantId = id;
+      const sel = document.getElementById("editBusinessType");
+      sel.innerHTML = Object.entries(BUSINESS_TYPE_LABELS).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+      sel.value = t.businessType || "general";
+      document.getElementById("editPlan").value = planLabel(t.plan) === "Business" ? "business" : planLabel(t.plan) === "Enterprise" ? "enterprise" : "pro";
+      document.getElementById("editTenantLabel").textContent = `${t.name}${t.businessName ? " — " + t.businessName : ""}`;
+      document.getElementById("editError").style.display = "none";
+      document.getElementById("editModal").classList.remove("hidden");
+    }
     async function loadTenants() {
       const tenants = await apiFetch("/admin/tenants");
       const body = document.getElementById("tenantsBody");
@@ -324,6 +466,7 @@
           <td>${new Date(t.createdAt).toLocaleDateString()}</td>
           <td>
             <div style="display:flex;gap:6px;">
+              <button class="btn btn-sm" onclick="openEditTenant('${t.id}')">Edit</button>
               ${t.status === "active" ? `<button class="btn btn-sm btn-danger" onclick="setStatus('${t.id}','suspended')">Suspend</button>` : `<button class="btn btn-sm" onclick="setStatus('${t.id}','active')">Activate</button>`}
               <button class="btn btn-sm btn-delete" onclick="deleteTenant('${t.id}','${esc(t.name).replace(/'/g, "\\'")}')">Delete</button>
             </div>
@@ -379,6 +522,21 @@
       document.getElementById("credsPassword").textContent = res.tempPassword;
       document.getElementById("credsModal").classList.remove("hidden");
       loadTenants(); loadStats();
+    });
+    document.getElementById("editCancelBtn").addEventListener("click", () => document.getElementById("editModal").classList.add("hidden"));
+    document.getElementById("editSaveBtn").addEventListener("click", async () => {
+      if (!editingTenantId) return;
+      const plan = document.getElementById("editPlan").value;
+      const businessType = document.getElementById("editBusinessType").value;
+      const errEl = document.getElementById("editError");
+      errEl.style.display = "none";
+      const btn = document.getElementById("editSaveBtn");
+      btn.disabled = true; btn.textContent = "Saving…";
+      const res = await apiFetch(`/admin/tenants/${editingTenantId}`, { method: "PATCH", body: JSON.stringify({ plan, businessType }) });
+      btn.disabled = false; btn.textContent = "Save Changes";
+      if (!res || res.error) { errEl.textContent = res?.error || "Something went wrong."; errEl.style.display = "block"; return; }
+      document.getElementById("editModal").classList.add("hidden");
+      loadTenants();
     });
     document.getElementById("credsCloseBtn").addEventListener("click", () => document.getElementById("credsModal").classList.add("hidden"));
     document.getElementById("logoutBtn").addEventListener("click", async () => { await apiFetch("/auth/logout", { method: "POST" }); window.location.href = "/login"; });

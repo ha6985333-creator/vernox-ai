@@ -9,3 +9,4 @@
 - [Never-throws result flag](never-throws-result-flag.md) — swallow-errors notifiers must return a structured result; monitoring alerts branch on anyFailed, not on the call returning
 - [Pricing tier gating](pricing-tier-gating.md) — tiers.ts is source of truth; only lead scoring/Slack/industry-AI/follow-up-sequences gated (Business+), enforced server-side; multi-location/API/white-label/CRM are marketing-only, NOT gated
 - [Automated follow-up sequences](follow-up-sequences.md) — Business+ SMS/email drip; state on lead row + notification_settings toggle (no new table); 5-min unref'd scheduler; gate checked every tick; advance even if a channel fails
+- [Self-serve plan upgrades](self-serve-upgrades.md) — tenant requests higher plan → upgrade_requests row (one open per tenant, reused not duped); admin Apply Plan PATCHes tenant plan → re-gates instantly (plan read from DB per req)
