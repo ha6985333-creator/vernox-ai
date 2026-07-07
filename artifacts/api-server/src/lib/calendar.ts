@@ -1,8 +1,17 @@
-// Google Calendar integration via Replit Connectors SDK
-// Connection: conn_google-calendar_01KR7DB5RWE4MV95ET992H7GZS
-import { ReplitConnectors } from "@replit/connectors-sdk";
+/**
+ * Google Calendar integration — uses the googleapis package + per-tenant
+ * OAuth2 refresh tokens stored in the database. Replaces the former
+ * @replit/connectors-sdk implementation which only worked on Replit.
+ *
+ * Public API is backward-compatible: functions now accept an optional
+ * `refreshToken` parameter. When omitted (tenant hasn't connected yet)
+ * the calendar functions throw a clear "not connected" error so callers
+ * can handle the outage gracefully.
+ */
+import { google } from "googleapis";
 import { logger } from "./logger.js";
 import { BUSINESS_NAME, CALENDAR_ID } from "../config.js";
+import { getAuthorizedClient } from "./googleOAuth.js";
 import type { BookingDetails } from "./email.js";
 import {
   DEFAULT_BUSINESS_HOURS,
@@ -20,6 +29,9 @@ export interface SlotOptions {
   durationMinutes?: number;
   businessHours?: BusinessHours | null;
   timeZone?: string;
+  /** The tenant's stored Google OAuth2 refresh token. Required for live
+   *  calendar checks; when undefined the availability functions throw. */
+  refreshToken?: string | null;
 }
 
 // The timezone the server resolves business hours against when none is supplied.
@@ -99,52 +111,43 @@ function parseDatetime(
 // ── Availability primitives ───────────────────────────────────────────────────
 
 /**
- * Query Google Calendar's freeBusy API for busy intervals on CALENDAR_ID within
- * the given window. A single freeBusy call is fast (one round-trip) — keeping us
- * well under the 500ms target even when scanning a 30-day window.
+ * Resolve the effective calendar ID for a tenant. Falls back to the global
+ * CALENDAR_ID env var (default: "primary") when the tenant hasn't overridden.
+ */
+function resolveCalendarId(tenantCalendarId?: string | null): string {
+  return tenantCalendarId?.trim() || CALENDAR_ID;
+}
+
+/**
+ * Query Google Calendar's freeBusy API for busy intervals within the given
+ * window, authenticated as the tenant via their stored refresh token.
+ *
+ * A single freeBusy call is fast (one round-trip) — keeping us well under
+ * the 500ms target even when scanning a 30-day window.
  */
 async function fetchBusyIntervals(
   timeMinISO: string,
   timeMaxISO: string,
+  refreshToken: string,
+  calendarId?: string | null,
 ): Promise<BusyInterval[]> {
-  const connectors = new ReplitConnectors();
-  const response = await connectors.proxy(
-    "google-calendar",
-    "/calendar/v3/freeBusy",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        timeMin: timeMinISO,
-        timeMax: timeMaxISO,
-        items: [{ id: CALENDAR_ID }],
-      }),
+  const auth = getAuthorizedClient(refreshToken);
+  const calId = resolveCalendarId(calendarId);
+
+  const cal = google.calendar({ version: "v3", auth });
+  const response = await cal.freebusy.query({
+    requestBody: {
+      timeMin: timeMinISO,
+      timeMax: timeMaxISO,
+      items: [{ id: calId }],
     },
-  );
+  });
 
-  const rawText = await response.text();
-  if (!response.ok) {
-    logger.error(
-      { status: response.status, body: rawText.slice(0, 400) },
-      "Google Calendar freeBusy error",
-    );
-    throw new Error(`freeBusy request failed with status ${response.status}`);
-  }
-
-  let data: {
-    calendars?: Record<string, { busy?: Array<{ start: string; end: string }> }>;
-  } = {};
-  try {
-    data = JSON.parse(rawText) as typeof data;
-  } catch {
-    throw new Error("freeBusy response was not valid JSON");
-  }
-
-  const busy = data.calendars?.[CALENDAR_ID]?.busy ?? [];
+  const busy = response.data.calendars?.[calId]?.busy ?? [];
   return busy
     .map((b) => ({
-      start: new Date(b.start).getTime(),
-      end: new Date(b.end).getTime(),
+      start: new Date(b.start!).getTime(),
+      end: new Date(b.end!).getTime(),
     }))
     .filter((b) => !isNaN(b.start) && !isNaN(b.end));
 }
@@ -202,6 +205,9 @@ function isWithinBusinessHours(
  * Is the requested slot free? Checks a single duration-long window against the
  * calendar's busy intervals. Throws if the Calendar API can't be reached so the
  * caller can decide how to handle the outage.
+ *
+ * @param refreshToken - The tenant's stored Google OAuth2 refresh token.
+ *   When null/undefined, throws "Google Calendar not connected" immediately.
  */
 export async function checkAvailability(
   requestedISO: string,
@@ -210,6 +216,10 @@ export async function checkAvailability(
   const durationMinutes = opts.durationMinutes ?? SLOT_DURATION_MINUTES;
   const timeZone = opts.timeZone ?? SERVER_TIMEZONE;
   const hours = opts.businessHours ?? DEFAULT_BUSINESS_HOURS;
+
+  if (!opts.refreshToken) {
+    throw new Error("Google Calendar not connected for this tenant. Connect via the dashboard.");
+  }
 
   const start = toEpochMs(requestedISO, timeZone);
   if (isNaN(start)) throw new Error("Invalid requested datetime");
@@ -223,14 +233,17 @@ export async function checkAvailability(
   const busy = await fetchBusyIntervals(
     new Date(start).toISOString(),
     new Date(end).toISOString(),
+    opts.refreshToken,
   );
   return !overlapsBusy(start, end, busy);
 }
 
 /**
  * Find the next `count` open slots starting after `fromISO`, scanning up to 30
- * days. Respects Mon–Fri business hours (9am–5pm) in the given timezone and
- * skips intervals that overlap existing calendar events. Uses one freeBusy call.
+ * days. Respects business hours in the given timezone and skips intervals that
+ * overlap existing calendar events. Uses one freeBusy call.
+ *
+ * @param refreshToken - Passed through opts.refreshToken. Required for live results.
  */
 export async function findNextAvailableSlots(
   fromISO: string,
@@ -241,12 +254,17 @@ export async function findNextAvailableSlots(
   const timeZone = opts.timeZone ?? SERVER_TIMEZONE;
   const hours = opts.businessHours ?? DEFAULT_BUSINESS_HOURS;
 
+  if (!opts.refreshToken) {
+    throw new Error("Google Calendar not connected for this tenant. Connect via the dashboard.");
+  }
+
   const requested = toEpochMs(fromISO, timeZone);
   const windowStart = Math.max(isNaN(requested) ? Date.now() : requested, Date.now());
   const windowEnd = windowStart + SEARCH_WINDOW_DAYS * 24 * 60 * 60_000;
   const busy = await fetchBusyIntervals(
     new Date(windowStart).toISOString(),
     new Date(windowEnd).toISOString(),
+    opts.refreshToken,
   );
 
   const stepMs = SLOT_STEP_MINUTES * 60_000;
@@ -271,70 +289,64 @@ export async function findNextAvailableSlots(
 /**
  * Create a calendar event for a confirmed booking. Best-effort: on failure it
  * logs and returns null rather than throwing. Returns the created event id.
+ *
+ * @param refreshToken - The tenant's stored Google OAuth2 refresh token.
+ *   When null/undefined, logs a warning and returns null without throwing.
  */
 export async function addCalendarEvent(
   booking: BookingDetails,
   durationMinutes = SLOT_DURATION_MINUTES,
   timeZone = SERVER_TIMEZONE,
+  refreshToken?: string | null,
 ): Promise<string | null> {
-  try {
-    const connectors = new ReplitConnectors();
-    const { start, end } = parseDatetime(booking.datetime, durationMinutes, timeZone);
-
-    const event = {
-      summary: `Appointment: ${booking.name} — ${booking.issue}`,
-      description: [
-        `Customer: ${booking.name}`,
-        `Email: ${booking.email}`,
-        `Phone: ${booking.phone}`,
-        `Issue: ${booking.issue}`,
-        `Booked via ${BUSINESS_NAME} chat widget`,
-      ].join("\n"),
-      location: booking.address,
-      start: { dateTime: start, timeZone: "UTC" },
-      end: { dateTime: end, timeZone: "UTC" },
-      attendees: [{ email: booking.email, displayName: booking.name }],
-      reminders: {
-        useDefault: false,
-        overrides: [
-          { method: "email", minutes: 60 },
-          { method: "popup", minutes: 30 },
-        ],
-      },
-    };
-
-    const response = await connectors.proxy(
-      "google-calendar",
-      `/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(event),
-      },
+  if (!refreshToken) {
+    logger.warn(
+      { bookingEmail: booking.email },
+      "addCalendarEvent: no Google refresh token for tenant — skipping calendar event",
     );
+    return null;
+  }
 
-    const rawText = await response.text();
+  try {
+    const auth = getAuthorizedClient(refreshToken);
+    const { start, end } = parseDatetime(booking.datetime, durationMinutes, timeZone);
+    const calId = resolveCalendarId();
 
-    if (!response.ok) {
-      logger.error(
-        { status: response.status, body: rawText.slice(0, 400) },
-        "Google Calendar API error",
-      );
-      return null;
-    }
+    const cal = google.calendar({ version: "v3", auth });
+    const response = await cal.events.insert({
+      calendarId: calId,
+      requestBody: {
+        summary: `Appointment: ${booking.name} — ${booking.issue}`,
+        description: [
+          `Customer: ${booking.name}`,
+          `Email: ${booking.email}`,
+          `Phone: ${booking.phone}`,
+          `Issue: ${booking.issue}`,
+          `Booked via ${BUSINESS_NAME} chat widget`,
+        ].join("\n"),
+        location: booking.address,
+        start: { dateTime: start, timeZone: "UTC" },
+        end: { dateTime: end, timeZone: "UTC" },
+        attendees: [{ email: booking.email, displayName: booking.name }],
+        reminders: {
+          useDefault: false,
+          overrides: [
+            { method: "email", minutes: 60 },
+            { method: "popup", minutes: 30 },
+          ],
+        },
+      },
+    });
 
-    let data: { id?: string; htmlLink?: string } = {};
-    try {
-      data = JSON.parse(rawText) as typeof data;
-    } catch {
-      logger.warn("Calendar response was not valid JSON");
-    }
+    const eventId = response.data.id ?? null;
+    const htmlLink = response.data.htmlLink ?? null;
 
     logger.info(
-      { eventId: data.id, link: data.htmlLink, customer: booking.name },
+      { eventId, link: htmlLink, customer: booking.name },
       "Calendar event created",
     );
-    return data.id ?? null;
+
+    return eventId;
   } catch (err) {
     logger.error({ err }, "Failed to create Google Calendar event");
     return null;

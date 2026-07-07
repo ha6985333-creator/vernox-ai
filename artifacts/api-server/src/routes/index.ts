@@ -12,6 +12,7 @@ import notificationsRouter from "./notifications";
 import buyRouter from "./buy";
 import availabilityRouter from "./availability";
 import upgradesRouter from "./upgrades";
+import googleOAuthRouter from "./googleOAuth";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(notificationsRouter);
 router.use(buyRouter);
 router.use(availabilityRouter);
 router.use(upgradesRouter);
+router.use(googleOAuthRouter);
 
 export default router;

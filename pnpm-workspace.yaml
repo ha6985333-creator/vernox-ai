@@ -169,3 +169,7 @@ overrides:
   ws: ">=8.21.0"
   postcss: ">=8.5.9"
   qs: ">=6.15.2"
+
+allowBuilds:
+  bcrypt: true
+  esbuild: true

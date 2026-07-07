@@ -242,6 +242,7 @@ router.post("/chat", async (req, res) => {
     let timeZone = SERVER_TIMEZONE;
     let durationMinutes = 60;
     let plan: string | null = null;
+    let tenantRefreshToken: string | null = null;
     if (tenantId) {
       const tenant = await db.query.tenantsTable.findFirst({
         where: (t, { eq }) => eq(t.id, tenantId),
@@ -259,6 +260,7 @@ router.post("/chat", async (req, res) => {
         timeZone = tenant.timezone ?? SERVER_TIMEZONE;
         durationMinutes = tenant.bookingDurationMinutes ?? 60;
         plan = tenant.plan;
+        tenantRefreshToken = tenant.googleRefreshToken ?? null;
       } else {
         req.log.warn({ tenantId }, "chat: tenantId provided but no matching tenant found; falling back to general prompt");
       }
@@ -273,7 +275,7 @@ router.post("/chat", async (req, res) => {
       services,
       description: businessDescription,
     });
-    const slotOptions = { durationMinutes, businessHours, timeZone };
+    const slotOptions = { durationMinutes, businessHours, timeZone, refreshToken: tenantRefreshToken };
 
     const groq = new Groq({ apiKey });
 
@@ -403,7 +405,7 @@ router.post("/chat", async (req, res) => {
 
     let calendarEventId: string | null = null;
     try {
-      calendarEventId = await addCalendarEvent(booking, durationMinutes, timeZone);
+      calendarEventId = await addCalendarEvent(booking, durationMinutes, timeZone, tenantRefreshToken);
       bookingResults.calendarEvent.created = calendarEventId !== null;
       if (calendarEventId === null) {
         bookingResults.calendarEvent.error = "Calendar API did not return an event id";

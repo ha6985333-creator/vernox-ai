@@ -41,6 +41,11 @@ export const tenantsTable = pgTable("tenants", {
   businessAddress: text("business_address"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  // Google Calendar OAuth2 — set when the tenant connects their Google account.
+  // The refresh token gives indefinite Calendar access for booking/availability.
+  // googleCalendarId defaults to "primary" at runtime if null (owner's default calendar).
+  googleRefreshToken: text("google_refresh_token"),
+  googleCalendarId: text("google_calendar_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

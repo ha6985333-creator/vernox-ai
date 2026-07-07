@@ -58,6 +58,7 @@ router.post("/check-availability", async (req, res) => {
   let tenantHours: BusinessHours | undefined;
   let tenantTimezone: string | undefined;
   let tenantDuration: number | undefined;
+  let tenantRefreshToken: string | null = null;
   if (tenantId) {
     const tenant = await db.query.tenantsTable.findFirst({
       where: (t, { eq }) => eq(t.id, tenantId),
@@ -66,6 +67,7 @@ router.post("/check-availability", async (req, res) => {
       tenantHours = tenant.businessHours ?? undefined;
       tenantTimezone = tenant.timezone ?? undefined;
       tenantDuration = tenant.bookingDurationMinutes ?? undefined;
+      tenantRefreshToken = tenant.googleRefreshToken ?? null;
     }
   }
 
@@ -73,6 +75,7 @@ router.post("/check-availability", async (req, res) => {
     durationMinutes: body.durationMinutes !== undefined ? duration : tenantDuration ?? duration,
     businessHours: tenantHours,
     timeZone: timezone ?? tenantTimezone,
+    refreshToken: tenantRefreshToken,
   };
 
   try {
