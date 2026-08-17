@@ -84,7 +84,7 @@ Rules:
 - draftResponse: professional, warm, never defensive; address reviewer by first name`;
 
   const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
+    model: "qwen-3.6-27b",
     messages: [{ role: "user", content: prompt }],
     max_tokens: 450,
     temperature: 0.35,
