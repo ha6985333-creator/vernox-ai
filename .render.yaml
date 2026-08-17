@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: vernox-ai
+    env: node
+    plan: free
+    buildCommand: pnpm install && pnpm --filter @workspace/api-server run build
+    startCommand: pnpm --filter @workspace/api-server run start
+    envVars:
+      - key: DATABASE_URL
+        value: "postgresql://postgres:Ycu,zVNvZ/uxa@6@db.cltyegpmzelqgaybuyie.supabase.co:5432/postgres"
