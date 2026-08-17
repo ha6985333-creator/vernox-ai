@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "buildCommand": "pnpm install && pnpm --filter @workspace/api-server run build",
+  "installCommand": "pnpm install",
+  "outputDirectory": "dist",
+  "routes": [
+    { "src": "/(.*)", "dest": "/dist/$1" }
+  ],
+  "env": {
+    "DATABASE_URL": "postgresql://postgres:Ycu,zVNvZ/uxa@6@db.cltyegpmzelqgaybuyie.supabase.co:5432/postgres"
+  }
+}
