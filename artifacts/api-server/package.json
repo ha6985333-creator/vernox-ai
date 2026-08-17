@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "google-auth-library": "^9.0.0",
     "googleapis": "^144.0.0",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
