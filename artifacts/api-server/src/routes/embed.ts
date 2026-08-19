@@ -60,7 +60,7 @@ router.get("/embed/:tenantId/widget.js", async (req, res) => {
   var frame = document.createElement("iframe");
   frame.id = "__cw-frame";
   frame.className = "cw-hidden";
-  frame.src = WIDGET_URL + "?t=" + TENANT_ID;
+  frame.src = WIDGET_URL + "/demo?t=" + TENANT_ID;
   frame.title = "Chat Widget";
   frame.allow = "microphone";
 
