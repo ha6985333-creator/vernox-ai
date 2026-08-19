@@ -24,15 +24,14 @@ router.get("/embed/:tenantId/widget.js", async (req, res) => {
     return;
   }
 
-  const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim() ?? "";
-  const widgetOrigin = domain ? `https://${domain}` : "";
+  const CHAT_BASE_URL = "https://vernoxai.digital";
 
   // The embed script is a self-contained IIFE — no dependencies.
   const script = `(function () {
   if (window.__chatWidgetLoaded) return;
   window.__chatWidgetLoaded = true;
 
-  var WIDGET_URL = "${widgetOrigin}/";
+  var WIDGET_URL = "${CHAT_BASE_URL}/";
   var TENANT_ID  = "${tenant.id}";
 
   /* ── Styles ── */
