@@ -27,7 +27,7 @@ app.use(cors({ origin: true }));
 
 // CSP for widget script and API responses
 app.use((req, res, next) => {
-  const isWidgetScript = req.path.startsWith("/embed/") && req.path.endsWith("widget.js");
+  const isWidgetScript = req.path.startsWith("/api/embed/") && req.path.endsWith("widget.js");
   const isApi = req.path.startsWith("/api/");
   if (isWidgetScript) {
     // Widget JS injects a <style> element inline, needs 'unsafe-inline' for style-src

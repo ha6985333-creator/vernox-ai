@@ -244,12 +244,21 @@ router.post("/chat", async (req, res) => {
     let businessPhone: string | null = null;
     let businessAddress: string | null = null;
     let services: string[] | undefined;
+    let services_v2: { name: string; description?: string | null; priceRange?: string | null }[] | undefined;
     let businessDescription: string | undefined;
     let businessHours: BusinessHours | undefined;
     let timeZone = SERVER_TIMEZONE;
     let durationMinutes = 60;
     let plan: string | null = null;
     let tenantRefreshToken: string | null = null;
+    // New business profile fields
+    let serviceArea: string | undefined;
+    let bookingLeadTimeMinutes: number | undefined;
+    let leadHandoffEmail: string | undefined;
+    let brandTone: string | undefined;
+    let phrasesToAvoid: string[] | undefined;
+    let mustUsePhrases: string[] | undefined;
+    let topicsToAvoid: string[] | undefined;
     if (tenantId) {
       const tenant = await db.query.tenantsTable.findFirst({
         where: (t, { eq }) => eq(t.id, tenantId),
@@ -268,6 +277,15 @@ router.post("/chat", async (req, res) => {
         durationMinutes = tenant.bookingDurationMinutes ?? 60;
         plan = tenant.plan;
         tenantRefreshToken = tenant.googleRefreshToken ?? null;
+        // New business profile fields
+        services_v2 = tenant.services_v2 ?? undefined;
+        serviceArea = tenant.serviceArea ?? undefined;
+        bookingLeadTimeMinutes = tenant.bookingLeadTimeMinutes ?? undefined;
+        leadHandoffEmail = tenant.leadHandoffEmail ?? undefined;
+        brandTone = tenant.brandTone ?? undefined;
+        phrasesToAvoid = tenant.phrasesToAvoid ?? undefined;
+        mustUsePhrases = tenant.mustUsePhrases ?? undefined;
+        topicsToAvoid = tenant.topicsToAvoid ?? undefined;
       } else {
         req.log.warn({ tenantId }, "chat: tenantId provided but no matching tenant found; falling back to general prompt");
       }
@@ -280,23 +298,38 @@ router.post("/chat", async (req, res) => {
     const businessType = getBusinessType(effectiveBusinessType);
     const systemPrompt = getSystemPrompt(effectiveBusinessType, businessName, {
       services,
+      services_v2,
       description: businessDescription,
+      serviceArea,
+      bookingLeadTimeMinutes,
+      leadHandoffEmail,
+      brandTone,
+      phrasesToAvoid,
+      mustUsePhrases,
+      topicsToAvoid,
     });
     const slotOptions = { durationMinutes, businessHours, timeZone, refreshToken: tenantRefreshToken };
 
     const groq = new Groq({ apiKey });
 
     const completion = await groq.chat.completions.create({
-      model: "qwen-3.6-27b",
+      model: "qwen/qwen3.6-27b",
       messages: [
         { role: "system", content: systemPrompt },
         ...messages,
       ],
       max_tokens: 600,
       temperature: 0.7,
+      reasoning_format: "hidden",
     });
 
-    const rawReply = completion.choices[0]?.message?.content ?? "";
+    let rawReply = completion.choices[0]?.message?.content ?? "";
+    rawReply = rawReply
+      .replace(/<\s*reasoning\s*>[\s\S]*?<\s*\/\s*reasoning\s*>/gi, "")
+      .replace(/<\s*think\s*>[\s\S]*?<\s*\/\s*think\s*>/gi, "")
+      .replace(/<\s*think\s*>/gi, "")
+      .replace(/<\s*\/\s*think\s*>/gi, "")
+      .trim();
     const { clean, result } = extractAndValidateBooking(rawReply, businessType.collectAddress, timeZone);
 
     // ── Validation errors ─────────────────────────────────────────
