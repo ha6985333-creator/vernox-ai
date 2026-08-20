@@ -227,6 +227,13 @@ router.post("/chat", async (req, res) => {
     return;
   }
 
+  for (const msg of messages) {
+    if (typeof msg.content === "string" && msg.content.length > 4000) {
+      res.status(400).json({ error: "Message exceeds maximum length of 4000 characters." });
+      return;
+    }
+  }
+
   try {
     // Resolve this tenant's industry + scheduling config so the bot asks
     // tailored questions and the availability checks use the right hours/tz.
