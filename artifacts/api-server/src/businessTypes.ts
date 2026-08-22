@@ -414,21 +414,3 @@ ${mustUseLine ? "\n- Naturally incorporate the MUST USE PHRASES when relevant." 
 ${topicsAvoidLine ? "\n- NEVER engage with or discuss any of the TOPICS TO AVOID listed above." : ""}
 `.trim();
 }
-
-export const DEFAULT_BUSINESS_TYPE: BusinessType =
-  BUSINESS_TYPES.find((t) => t.value === "general")!;
-
-export function getBusinessType(value?: string | null): BusinessType {
-  if (!value) return DEFAULT_BUSINESS_TYPE;
-  return BUSINESS_TYPES.find((t) => t.value === value) ?? DEFAULT_BUSINESS_TYPE;
-}
-
-export function isValidBusinessType(value: string): boolean {
-  return BUSINESS_TYPES.some((t) => t.value === value);
-}
-
-function bookingPhrase(noun: BusinessType["bookingNoun"]): string {
-  if (noun === "reservation") return "a reservation";
-  if (noun === "consultation") return "a consultation";
-  return "an appointment";
-}
