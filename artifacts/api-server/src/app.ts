@@ -23,7 +23,27 @@ app.use(
   }),
 );
 
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({ origin: true }));
+
+// CSP for widget script and API responses
+app.use((req, res, next) => {
+  const isWidgetScript = req.path.startsWith("/api/embed/") && req.path.endsWith("widget.js");
+  const isApi = req.path.startsWith("/api/");
+  if (isWidgetScript) {
+    // Widget JS injects a <style> element inline, needs 'unsafe-inline' for style-src
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; frame-ancestors *;"
+    );
+  } else if (isApi) {
+    // API responses are JSON, minimal CSP
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'none'; frame-ancestors 'none'; base-uri 'none';"
+    );
+  }
+  next();
+});
 
 app.use(
   session({
@@ -44,8 +64,8 @@ app.use(
   }),
 );
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "100kb" }));
+app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 
 // Rate limit the chat endpoint — 10 messages/minute per IP
 const chatLimiter = rateLimit({

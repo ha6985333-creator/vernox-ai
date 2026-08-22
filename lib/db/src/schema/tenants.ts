@@ -15,6 +15,13 @@ export interface BusinessHours {
   sun: DayHours;
 }
 
+// Enhanced service object for services_v2
+export interface Service {
+  name: string;
+  description?: string | null;
+  priceRange?: string | null; // e.g. "$100-200", "Starting at $50", null
+}
+
 export const tenantsTable = pgTable("tenants", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -27,7 +34,10 @@ export const tenantsTable = pgTable("tenants", {
   businessName: text("business_name"),
   // Services this business actually offers — the bot only suggests these and
   // politely redirects requests for anything not on the list.
+  // LEGACY: text[] column, will be replaced by services_v2 after migration.
   services: text("services").array(),
+  // NEW: Enhanced services with description and price range
+  services_v2: jsonb("services_v2").$type<Service[]>(),
   // Per-day opening hours used by the double-booking availability checker.
   businessHours: jsonb("business_hours").$type<BusinessHours>(),
   // Appointment/booking length in minutes (drives slot width + event length).
@@ -39,11 +49,22 @@ export const tenantsTable = pgTable("tenants", {
   // Public contact details shown to customers in booking-confirmation emails.
   businessPhone: text("business_phone"),
   businessAddress: text("business_address"),
-  stripeCustomerId: text("stripe_customer_id"),
-  stripeSubscriptionId: text("stripe_subscription_id"),
+  // --- NEW BUSINESS PROFILE FIELDS ---
+  // Geographic area where services are provided (zip codes, cities, radius, etc.)
+  serviceArea: text("service_area"),
+  // Minimum advance notice required for bookings (in minutes)
+  bookingLeadTimeMinutes: integer("booking_lead_time_minutes"),
+  // Email address where qualified leads should be sent (separate from tenant email)
+  leadHandoffEmail: text("lead_handoff_email"),
+  // Brand voice preference: formal | casual | playful
+  brandTone: text("brand_tone").default("casual"),
+  // Phrases/words the AI should never use in responses
+  phrasesToAvoid: text("phrases_to_avoid").array(),
+  // Phrases/words the AI must include when relevant
+  mustUsePhrases: text("must_use_phrases").array(),
+  // Topics the AI should never discuss or engage with
+  topicsToAvoid: text("topics_to_avoid").array(),
   // Google Calendar OAuth2 — set when the tenant connects their Google account.
-  // The refresh token gives indefinite Calendar access for booking/availability.
-  // googleCalendarId defaults to "primary" at runtime if null (owner's default calendar).
   googleRefreshToken: text("google_refresh_token"),
   googleCalendarId: text("google_calendar_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

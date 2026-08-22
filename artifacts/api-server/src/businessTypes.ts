@@ -269,11 +269,34 @@ function bookingPhrase(noun: BusinessType["bookingNoun"]): string {
   return "an appointment";
 }
 
+// Enhanced service object for services_v2
+export interface Service {
+  name: string;
+  description?: string | null;
+  priceRange?: string | null; // e.g. "$100-200", "Starting at $50", null
+}
+
 export interface PromptContext {
   /** The exact services this business offers. The bot only offers these. */
   services?: string[] | null;
+  /** Enhanced services with description and price range */
+  services_v2?: Service[] | null;
   /** Short free-text description of the business, added as extra context. */
   description?: string | null;
+  /** Geographic area where services are provided */
+  serviceArea?: string | null;
+  /** Brand voice preference: formal | casual | playful */
+  brandTone?: string | null;
+  /** Minimum advance notice required for bookings (in minutes) */
+  bookingLeadTimeMinutes?: number | null;
+  /** Phrases/words the AI should never use */
+  phrasesToAvoid?: string[] | null;
+  /** Phrases/words the AI must include when relevant */
+  mustUsePhrases?: string[] | null;
+  /** Topics the AI should never discuss */
+  topicsToAvoid?: string[] | null;
+  /** Email where qualified leads should be sent */
+  leadHandoffEmail?: string | null;
 }
 
 export function getSystemPrompt(
@@ -288,23 +311,69 @@ export function getSystemPrompt(
     ? ""
     : `\n- This business does NOT need a service address — always set "address" to "" in the booking JSON and never ask for one.`;
 
-  const services = (ctx.services ?? [])
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  // Use services_v2 if available, fall back to legacy services
+  const services_v2 = (ctx.services_v2 ?? []);
+  const services_legacy = (ctx.services ?? []);
+  const services = services_v2.length > 0
+    ? services_v2.map(s => s.name.trim()).filter(s => s.length > 0)
+    : services_legacy.map(s => s.trim()).filter(s => s.length > 0);
+
   const descriptionLine =
     ctx.description && ctx.description.trim()
       ? `\nAbout the business: ${ctx.description.trim()}`
       : "";
-  const servicesSection = services.length
-    ? `
+  
+  const serviceAreaLine =
+    ctx.serviceArea && ctx.serviceArea.trim()
+      ? `\nService area: ${ctx.serviceArea.trim()}`
+      : "";
 
+  const brandToneLine =
+    ctx.brandTone && ctx.brandTone.trim()
+      ? `\nBrand tone: ${ctx.brandTone.trim()}`
+      : "";
+  
+  const leadTimeLine =
+    ctx.bookingLeadTimeMinutes !== null && ctx.bookingLeadTimeMinutes !== undefined
+      ? `\nMinimum booking lead time: ${ctx.bookingLeadTimeMinutes} minutes`
+      : "";
+
+  const phrasesAvoidLine =
+    ctx.phrasesToAvoid && ctx.phrasesToAvoid.length > 0
+      ? `\nPHRASES TO AVOID (never use these words/phrases):\n${ctx.phrasesToAvoid.map(p => `  - "${p}"`).join("\n")}`
+      : "";
+  
+  const mustUseLine =
+    ctx.mustUsePhrases && ctx.mustUsePhrases.length > 0
+      ? `\nPHRASES TO INCLUDE (use these when relevant/natural):\n${ctx.mustUsePhrases.map(p => `  - "${p}"`).join("\n")}`
+      : "";
+  
+  const topicsAvoidLine =
+    ctx.topicsToAvoid && ctx.topicsToAvoid.length > 0
+      ? `\nTOPICS TO NEVER DISCUSS:\n${ctx.topicsToAvoid.map(t => `  - ${t}`).join("\n")}`
+      : "";
+
+  // Build services section from services_v2 if available, else legacy
+  const servicesSection = services_v2.length > 0
+    ? `
 SERVICES WE OFFER (this is the COMPLETE list — we offer nothing else):
-${services.map((s) => `  - ${s}`).join("\n")}
+${services_v2.map(s => `  - ${s.name}${s.description ? ` — ${s.description}` : ""}${s.priceRange ? ` (${s.priceRange})` : ""}`).join("\n")}
+- Only ever offer, recommend, or book these services. Do NOT invent or imply any service not on this list.
+- If the customer asks for something not on the list, politely say it isn't offered and suggest the closest service(s) above instead. For example: "We don't offer that, but we do offer ${services_v2.slice(0, 3).map(s => s.name).join(", ")} — would one of those work?"`
+    : services.length
+      ? `
+SERVICES WE OFFER (this is the COMPLETE list — we offer nothing else):
+${services.map(s => `  - ${s}`).join("\n")}
 - Only ever offer, recommend, or book these services. Do NOT invent or imply any service not on this list.
 - If the customer asks for something not on the list, politely say it isn't offered and suggest the closest service(s) above instead. For example: "We don't offer that, but we do offer ${services.slice(0, 3).join(", ")} — would one of those work?"`
-    : "";
+      : "";
 
-return `
+  const leadHandoffLine =
+    ctx.leadHandoffEmail && ctx.leadHandoffEmail.trim()
+      ? `\nLead handoff email (internal): ${ctx.leadHandoffEmail.trim()}`
+      : "";
+
+  return `
 You are a friendly and professional AI assistant for ${t.article} ${t.descriptor} called ${name}.${descriptionLine}${serviceAreaLine}${brandToneLine}${leadTimeLine}${phrasesAvoidLine}${mustUseLine}${topicsAvoidLine}${leadHandoffLine}
 
 Your goals in order:

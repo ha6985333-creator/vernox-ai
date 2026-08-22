@@ -227,6 +227,13 @@ router.post("/chat", async (req, res) => {
     return;
   }
 
+  for (const msg of messages) {
+    if (typeof msg.content === "string" && msg.content.length > 4000) {
+      res.status(400).json({ error: "Message exceeds maximum length of 4000 characters." });
+      return;
+    }
+  }
+
   try {
     // Resolve this tenant's industry + scheduling config so the bot asks
     // tailored questions and the availability checks use the right hours/tz.
@@ -237,12 +244,21 @@ router.post("/chat", async (req, res) => {
     let businessPhone: string | null = null;
     let businessAddress: string | null = null;
     let services: string[] | undefined;
+    let services_v2: { name: string; description?: string | null; priceRange?: string | null }[] | undefined;
     let businessDescription: string | undefined;
     let businessHours: BusinessHours | undefined;
     let timeZone = SERVER_TIMEZONE;
     let durationMinutes = 60;
     let plan: string | null = null;
     let tenantRefreshToken: string | null = null;
+    // New business profile fields
+    let serviceArea: string | undefined;
+    let bookingLeadTimeMinutes: number | undefined;
+    let leadHandoffEmail: string | undefined;
+    let brandTone: string | undefined;
+    let phrasesToAvoid: string[] | undefined;
+    let mustUsePhrases: string[] | undefined;
+    let topicsToAvoid: string[] | undefined;
     if (tenantId) {
       const tenant = await db.query.tenantsTable.findFirst({
         where: (t, { eq }) => eq(t.id, tenantId),
@@ -261,6 +277,15 @@ router.post("/chat", async (req, res) => {
         durationMinutes = tenant.bookingDurationMinutes ?? 60;
         plan = tenant.plan;
         tenantRefreshToken = tenant.googleRefreshToken ?? null;
+        // New business profile fields
+        services_v2 = tenant.services_v2 ?? undefined;
+        serviceArea = tenant.serviceArea ?? undefined;
+        bookingLeadTimeMinutes = tenant.bookingLeadTimeMinutes ?? undefined;
+        leadHandoffEmail = tenant.leadHandoffEmail ?? undefined;
+        brandTone = tenant.brandTone ?? undefined;
+        phrasesToAvoid = tenant.phrasesToAvoid ?? undefined;
+        mustUsePhrases = tenant.mustUsePhrases ?? undefined;
+        topicsToAvoid = tenant.topicsToAvoid ?? undefined;
       } else {
         req.log.warn({ tenantId }, "chat: tenantId provided but no matching tenant found; falling back to general prompt");
       }
@@ -273,7 +298,15 @@ router.post("/chat", async (req, res) => {
     const businessType = getBusinessType(effectiveBusinessType);
     const systemPrompt = getSystemPrompt(effectiveBusinessType, businessName, {
       services,
+      services_v2,
       description: businessDescription,
+      serviceArea,
+      bookingLeadTimeMinutes,
+      leadHandoffEmail,
+      brandTone,
+      phrasesToAvoid,
+      mustUsePhrases,
+      topicsToAvoid,
     });
     const slotOptions = { durationMinutes, businessHours, timeZone, refreshToken: tenantRefreshToken };
 
