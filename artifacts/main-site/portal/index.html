@@ -528,24 +528,28 @@
         if (uRes.ok) { const ud = await uRes.json(); pendingUpgrade = ud.pending || null; }
       } catch (_) {}
 
-      try {
+try {
         const tRes = await fetch("/api/auth/tenant", { credentials: "include" });
-        if (tRes.ok) { const td = await tRes.json(); tenantId = td.tenantId ?? ""; renderPlan(td); }
-      } catch (_) {}
+        if (tRes.ok) {
+          const td = await tRes.json();
+          tenantId = td.tenantId ?? "";
+          renderPlan(td);
+
+          const base = window.location.origin;
+          const snippetSrc = `${base}/api/embed/${tenantId || "YOUR_TENANT_ID"}/widget.js`;
+          document.getElementById("snippetEl").innerHTML =
+            `<span class="tag"><script</span> <span class="attr">src</span>=<span class="val">"${snippetSrc}"</span><span class="tag">></script></span>`;
+          document.getElementById("copySnippetBtn").addEventListener("click", () => {
+            navigator.clipboard.writeText(`<script src="${snippetSrc}"><\/script>`).then(() => {
+              const b = document.getElementById("copySnippetBtn");
+              b.textContent = "Copied!"; setTimeout(() => { b.textContent = "Copy"; }, 2000);
+            });
+          });
+        }
+} catch (_) {}
 
       document.getElementById("upgradeCancelBtn").addEventListener("click", () => document.getElementById("upgradeModal").classList.add("hidden"));
       document.getElementById("upgradeSubmitBtn").addEventListener("click", submitUpgradeRequest);
-
-      const base = window.location.origin;
-      const snippetSrc = `${base}/api/embed/${tenantId || "YOUR_TENANT_ID"}/widget.js`;
-      document.getElementById("snippetEl").innerHTML =
-        `<span class="tag">&lt;script</span> <span class="attr">src</span>=<span class="val">"${snippetSrc}"</span><span class="tag">&gt;&lt;/script&gt;</span>`;
-      document.getElementById("copySnippetBtn").addEventListener("click", () => {
-        navigator.clipboard.writeText(`<script src="${snippetSrc}"><\/script>`).then(() => {
-          const b = document.getElementById("copySnippetBtn");
-          b.textContent = "Copied!"; setTimeout(() => { b.textContent = "Copy"; }, 2000);
-        });
-      });
 
       const hash = location.hash.replace("#","") || "reservations";
       const target = ["reservations","reviews","leads","settings"].includes(hash) ? hash : "reservations";

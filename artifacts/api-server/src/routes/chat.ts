@@ -280,16 +280,23 @@ router.post("/chat", async (req, res) => {
     const groq = new Groq({ apiKey });
 
     const completion = await groq.chat.completions.create({
-      model: "qwen-3.6-27b",
+      model: "qwen/qwen3.6-27b",
       messages: [
         { role: "system", content: systemPrompt },
         ...messages,
       ],
       max_tokens: 600,
       temperature: 0.7,
+      reasoning_format: "hidden",
     });
 
-    const rawReply = completion.choices[0]?.message?.content ?? "";
+    let rawReply = completion.choices[0]?.message?.content ?? "";
+    rawReply = rawReply
+      .replace(/<\s*reasoning\s*>[\s\S]*?<\s*\/\s*reasoning\s*>/gi, "")
+      .replace(/<\s*think\s*>[\s\S]*?<\s*\/\s*think\s*>/gi, "")
+      .replace(/<\s*think\s*>/gi, "")
+      .replace(/<\s*\/\s*think\s*>/gi, "")
+      .trim();
     const { clean, result } = extractAndValidateBooking(rawReply, businessType.collectAddress, timeZone);
 
     // ── Validation errors ─────────────────────────────────────────

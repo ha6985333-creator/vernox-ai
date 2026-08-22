@@ -24,15 +24,14 @@ router.get("/embed/:tenantId/widget.js", async (req, res) => {
     return;
   }
 
-  const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim() ?? "";
-  const widgetOrigin = domain ? `https://${domain}` : "";
+  const CHAT_BASE_URL = "https://vernoxai.digital";
 
   // The embed script is a self-contained IIFE — no dependencies.
   const script = `(function () {
   if (window.__chatWidgetLoaded) return;
   window.__chatWidgetLoaded = true;
 
-  var WIDGET_URL = "${widgetOrigin}/";
+  var WIDGET_URL = "${CHAT_BASE_URL}/";
   var TENANT_ID  = "${tenant.id}";
 
   /* ── Styles ── */
@@ -61,7 +60,7 @@ router.get("/embed/:tenantId/widget.js", async (req, res) => {
   var frame = document.createElement("iframe");
   frame.id = "__cw-frame";
   frame.className = "cw-hidden";
-  frame.src = WIDGET_URL + "?t=" + TENANT_ID;
+  frame.src = WIDGET_URL + "/demo?t=" + TENANT_ID;
   frame.title = "Chat Widget";
   frame.allow = "microphone";
 
