@@ -320,17 +320,39 @@ router.post("/chat", async (req, res) => {
       ],
       max_tokens: 1500,
       temperature: 0.7,
-      reasoning_format: "hidden",
     });
 
     let rawReply = completion.choices[0]?.message?.content ?? "";
-    rawReply = rawReply
+
+    // Find the BOOKING_COMPLETE marker in the RAW reply (before stripping thinking tags)
+    const markerIndex = rawReply.indexOf(BOOKING_MARKER);
+    const hasBookingMarker = markerIndex !== -1;
+
+    // Strip thinking tags from the entire reply
+    const strippedReply = rawReply
       .replace(/<\s*reasoning\s*>[\s\S]*?<\s*\/\s*reasoning\s*>/gi, "")
       .replace(/<\s*think\s*>[\s\S]*?<\s*\/\s*think\s*>/gi, "")
       .replace(/<\s*think\s*>/gi, "")
       .replace(/<\s*\/\s*think\s*>/gi, "")
       .trim();
-    const { clean, result } = extractAndValidateBooking(rawReply, businessType.collectAddress, timeZone);
+
+    let clean: string;
+    if (markerIndex !== -1) {
+      // Booking marker found in raw reply - extract clean message from text before marker
+      clean = rawReply.slice(0, markerIndex).trim();
+      clean = clean
+        .replace(/<\s*reasoning\s*>[\s\S]*?<\s*\/\s*reasoning\s*>/gi, "")
+        .replace(/<\s*think\s*>[\s\S]*?<\s*\/\s*think\s*>/gi, "")
+        .replace(/<\s*think\s*>/gi, "")
+        .replace(/<\s*\/\s*think\s*>/gi, "")
+        .trim();
+    } else {
+      // No booking marker - use stripped reply as the message
+      clean = strippedReply;
+    }
+
+    // Use extractAndValidateBooking on the raw reply to properly parse the booking
+    const { result } = extractAndValidateBooking(rawReply, businessType.collectAddress, timeZone);
 
     // ── Validation errors ─────────────────────────────────────────
     if (result.errors.length > 0) {
@@ -343,7 +365,7 @@ router.post("/chat", async (req, res) => {
 
     // ── No booking in this turn ───────────────────────────────────
     if (!result.booking) {
-      const message = clean.trim() ? clean : "Got it — let me check that for you.";
+      const message = clean.trim() ? clean : (strippedReply.trim() ? strippedReply : "Got it — let me check that for you.");
       res.json({ message, bookingConfirmed: false });
       return;
     }
