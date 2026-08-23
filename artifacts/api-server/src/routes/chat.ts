@@ -320,6 +320,7 @@ router.post("/chat", async (req, res) => {
       ],
       max_tokens: 1500,
       temperature: 0.7,
+      reasoning_format: "hidden",
     });
 
     let rawReply = completion.choices[0]?.message?.content ?? "";
@@ -365,7 +366,7 @@ router.post("/chat", async (req, res) => {
 
     // ── No booking in this turn ───────────────────────────────────
     if (!result.booking) {
-      const message = clean.trim() ? clean : (strippedReply.trim() ? strippedReply : "Got it — let me check that for you.");
+      const message = clean.trim() ? clean : "Got it — let me check that for you.";
       res.json({ message, bookingConfirmed: false });
       return;
     }
