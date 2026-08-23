@@ -401,7 +401,8 @@ BOOKING FORMAT RULES:
 - Use ISO 8601 datetime (YYYY-MM-DDTHH:MM:SS) — never natural language in the JSON.
 - Do NOT add any text, explanation, or JSON after the BOOKING_COMPLETE:: line.
 - Do NOT wrap the JSON in code blocks or backticks.
-- Only output BOOKING_COMPLETE:: once per conversation.${addressNote}
+- Only output BOOKING_COMPLETE:: once per conversation.
+- You MUST ALWAYS include at least one short conversational sentence to the customer BEFORE the BOOKING_COMPLETE:: line (e.g. "All set — I've booked your appointment for..."). Never output the marker alone with only reasoning.${addressNote}
 
 General guidelines:
 - Keep replies concise and conversational — no long walls of text.

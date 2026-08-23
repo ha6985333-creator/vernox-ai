@@ -318,7 +318,7 @@ router.post("/chat", async (req, res) => {
         { role: "system", content: systemPrompt },
         ...messages,
       ],
-      max_tokens: 600,
+      max_tokens: 1500,
       temperature: 0.7,
       reasoning_format: "hidden",
     });
@@ -343,7 +343,8 @@ router.post("/chat", async (req, res) => {
 
     // ── No booking in this turn ───────────────────────────────────
     if (!result.booking) {
-      res.json({ message: clean, bookingConfirmed: false });
+      const message = clean.trim() ? clean : "Got it — let me check that for you.";
+      res.json({ message, bookingConfirmed: false });
       return;
     }
 
