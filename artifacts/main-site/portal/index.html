@@ -538,7 +538,7 @@ try {
           const base = window.location.origin;
           const snippetSrc = `${base}/api/embed/${tenantId || "YOUR_TENANT_ID"}/widget.js`;
           document.getElementById("snippetEl").innerHTML =
-            `<span class="tag"><script</span> <span class="attr">src</span>=<span class="val">"${snippetSrc}"</span><span class="tag">></script></span>`;
+            `<span class="tag"><script</span> <span class="attr">src</span>=<span class="val">"${snippetSrc}"</span><span class="tag">><\/script></span>`;
           document.getElementById("copySnippetBtn").addEventListener("click", () => {
             navigator.clipboard.writeText(`<script src="${snippetSrc}"><\/script>`).then(() => {
               const b = document.getElementById("copySnippetBtn");
